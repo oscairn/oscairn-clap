@@ -34,7 +34,9 @@ change it. Sustained keys no longer held do not count.
 - **`oscairn_host_harmony_t.get(host, &harmony)`**, main thread: the harmony of the last event the
   host delivered to the plugin. False before the first. So **a plugin must query the event space
   to read the harmony through the host extension too**; one that never queries always gets false.
-  A plugin taken out of its part keeps reading that part's last harmony.
+  It follows the plugin's part: moved to another part, the plugin reads that part's harmony from
+  its next block; taken out of its part, or with its part's harmony gone, it reads false again until
+  it is in a part.
 - A plugin must not send events in this space; Oscairn refuses them.
 
 ## `oscairn_harmony_t`

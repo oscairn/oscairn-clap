@@ -48,8 +48,8 @@ least `min_version` (null or empty: any) is installed: in Oscairn,
 true; false when the library is not installed, is older, or the path does not fit. `owner` is what
 the table came from: the `clap_host_t`, or the `clap_preset_discovery_indexer_t`. A preset
 provider's `init`, which has an indexer and no host, can so declare a library's folder as a preset
-location. **Oscairn: from a plugin in a worker process (the desktop) it returns false for now**;
-from an indexer and from a plugin in the engine's process it works.
+location. In Oscairn it works from an indexer, from a plugin in the engine's process and from a
+plugin in a worker process.
 
 ### `bool create(host, const char* file, oscairn_asset_ref_t* ref, char* message, message_capacity)` (draft 3)
 
