@@ -31,7 +31,6 @@ namespace
         uint16_t harmonySpace = UINT16_MAX; // the id the host's event registry returned
         double rate = 48000, phase = 0;
         std::atomic<double> level{.5};
-        std::atomic<uint32_t> events{0}; // harmony events seen; the self-test reads it back
         oscairn_harmony_t last{};        // audio thread: the latest reading, which holds between events
     };
     Plugin& self(const clap_plugin_t* p) { return *static_cast<Plugin*>(p->plugin_data); }
@@ -163,7 +162,7 @@ namespace
         p.deactivate = [](const clap_plugin_t*) {};
         p.start_processing = [](const clap_plugin_t*) { return true; };
         p.stop_processing = [](const clap_plugin_t*) {};
-        p.reset = [](const clap_plugin_t* pl) { auto& s = self(pl); s.last = {}; s.events = 0; };
+        p.reset = [](const clap_plugin_t* pl) { auto& s = self(pl); s.last = {}; };
         p.on_main_thread = [](const clap_plugin_t*) {};
         p.process = [](const clap_plugin_t* pl, const clap_process_t* block) -> clap_process_status
         {
@@ -178,7 +177,6 @@ namespace
                     if(h->time > i) break;
                     if(h->space_id != s.harmonySpace || h->type != OSCAIRN_EVENT_HARMONY) continue;
                     s.last = reinterpret_cast<const oscairn_event_harmony_t*>(h)->harmony; // the reading holds until the next
-                    ++s.events;
                 }
             const bool held = s.last.held[0] | s.last.held[1];
             for(uint32_t i = 0; i < block->frames_count; ++i)

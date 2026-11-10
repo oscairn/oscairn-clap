@@ -45,7 +45,6 @@ namespace
         oscairn::voices::Limits limits;    // set_limits' settings, copied
         uint64_t started = 0;
         uint32_t chokeFrames = 144;
-        std::atomic<uint32_t> givenUp{0}; // voices faded out by the budget; the self-test reads it
     };
     Plugin& self(const clap_plugin_t* p) { return *static_cast<Plugin*>(p->plugin_data); }
 
@@ -78,7 +77,6 @@ namespace
                 const int i = victim(s);
                 if(i < 0) return;
                 slot = &s.voices[size_t(i)];
-                ++s.givenUp;
             }
         }
         *slot = Voice{};
@@ -208,7 +206,6 @@ namespace
         {
             auto& s = self(pl);
             for(auto& v : s.voices) v = Voice{};
-            s.givenUp = 0;
         };
         p.on_main_thread = [](const clap_plugin_t*) {};
         p.process = [](const clap_plugin_t* pl, const clap_process_t* block) -> clap_process_status
@@ -235,11 +232,7 @@ namespace
                                (n.channel < 0 || v.channel == n.channel))
                             {
                                 v.held = false;
-                                if(h->type == CLAP_EVENT_NOTE_CHOKE && !v.chokeLength)
-                                {
-                                    v.chokeLength = v.chokeLeft = s.chokeFrames;
-                                    ++s.givenUp;
-                                }
+                                if(h->type == CLAP_EVENT_NOTE_CHOKE && !v.chokeLength) v.chokeLength = v.chokeLeft = s.chokeFrames;
                             }
                     }
                 }
@@ -273,11 +266,7 @@ namespace
                 if(i < 0) break;
                 auto& v = s.voices[size_t(i)];
                 v.held = false;
-                if(!v.chokeLength)
-                {
-                    v.chokeLength = v.chokeLeft = s.chokeFrames;
-                    ++s.givenUp;
-                }
+                if(!v.chokeLength) v.chokeLength = v.chokeLeft = s.chokeFrames;
                 --sounding;
             }
             return sounding ? CLAP_PROCESS_CONTINUE : CLAP_PROCESS_SLEEP;

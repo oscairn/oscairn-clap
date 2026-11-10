@@ -32,7 +32,6 @@ namespace
         const clap_host_t* host = nullptr;
         std::atomic<double> amount{.5};
         oscairn_asset_ref_t curve{}; // its wavetable, as a reference; empty: the built-in curve
-        std::atomic<bool> resolved{false};
         double table[8]{};
         Plugin() { for(int i = 0; i < 8; ++i) table[i] = 1.0 / (1 + i); } // the fallback shape
     };
@@ -42,7 +41,6 @@ namespace
     // without the extension, or a library that is not installed, leaves the fallback in place.
     void resolveCurve(Plugin& s)
     {
-        s.resolved = false;
         if(!s.curve.library[0] || !s.curve.path[0]) return;
         const auto* assets = static_cast<const oscairn_host_assets_t*>(s.host->get_extension(s.host, OSCAIRN_EXT_ASSETS));
         if(!assets || !assets->resolve) return;
@@ -56,7 +54,6 @@ namespace
             if(std::fread(read, sizeof read, 1, file) == 1)
             {
                 for(int i = 0; i < 8; ++i) s.table[i] = read[i];
-                s.resolved = true;
             }
             std::fclose(file);
         }

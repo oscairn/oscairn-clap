@@ -29,7 +29,6 @@ namespace
         double rate = 48000, beat = -1, perSample = 0, tempo = 120; // beat < 0 until the first event
         std::atomic<double> level{.5};
         double phase = 0;
-        uint32_t blocksWithBeat = 0; // what the self-test reads back
     };
     Plugin& self(const clap_plugin_t* p) { return *static_cast<Plugin*>(p->plugin_data); }
 
@@ -159,7 +158,7 @@ namespace
         p.deactivate = [](const clap_plugin_t*) {};
         p.start_processing = [](const clap_plugin_t*) { return true; };
         p.stop_processing = [](const clap_plugin_t*) {};
-        p.reset = [](const clap_plugin_t* pl) { auto& s = self(pl); s.beat = -1; s.perSample = 0; s.blocksWithBeat = 0; };
+        p.reset = [](const clap_plugin_t* pl) { auto& s = self(pl); s.beat = -1; s.perSample = 0; };
         p.on_main_thread = [](const clap_plugin_t*) {};
         p.process = [](const clap_plugin_t* pl, const clap_process_t* block) -> clap_process_status
         {
@@ -184,7 +183,6 @@ namespace
                     s.beat = std::max(s.beat, double(e.beats) / CLAP_BEATTIME_FACTOR);
                     s.tempo = e.tempo;
                     s.perSample = e.tempo / 60 / s.rate; // and from here, on our own
-                    ++s.blocksWithBeat;
                 }
                 float out = 0;
                 if(s.beat >= 0)

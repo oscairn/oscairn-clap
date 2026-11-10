@@ -34,7 +34,6 @@ namespace
         uint16_t space = 0;
         double rate = 48000, phase[2]{};
         std::atomic<double> rateHz{1}, depth{1};
-        std::atomic<uint32_t> sent{0}; // the self-test reads it back
     };
     Plugin& self(const clap_plugin_t* p) { return *static_cast<Plugin*>(p->plugin_data); }
 
@@ -47,7 +46,7 @@ namespace
             out->id = i + 1;
             out->flags = CLAP_PARAM_IS_AUTOMATABLE;
             out->max_value = i ? 1 : 8;
-            out->default_value = i ? 1 : 1;
+            out->default_value = 1;
             std::strcpy(out->name, i ? "Depth" : "Rate");
             return true;
         },
@@ -135,7 +134,7 @@ namespace
         p.deactivate = [](const clap_plugin_t*) {};
         p.start_processing = [](const clap_plugin_t*) { return true; };
         p.stop_processing = [](const clap_plugin_t*) {};
-        p.reset = [](const clap_plugin_t* pl) { auto& s = self(pl); s.phase[0] = s.phase[1] = 0; s.sent = 0; };
+        p.reset = [](const clap_plugin_t* pl) { auto& s = self(pl); s.phase[0] = s.phase[1] = 0; };
         p.on_main_thread = [](const clap_plugin_t*) {};
         p.process = [](const clap_plugin_t* pl, const clap_process_t* block) -> clap_process_status
         {
@@ -152,14 +151,13 @@ namespace
                 {
                     oscairn_event_param_target_t e{};
                     e.header = {sizeof(e), i, s.space, OSCAIRN_EVENT_PARAM_TARGET, 0};
-                    e.mode = OSCAIRN_PARAM_TARGET_MODULATE;
                     e.note_id = e.port_index = e.channel = e.key = -1;
                     for(uint32_t lane = 0; lane < laneCount; ++lane)
                     {
                         e.lane = lane;
                         e.value = lane == 0 ? depth * slow : fast;
                         e.mode = lane == 0 ? OSCAIRN_PARAM_TARGET_MODULATE : OSCAIRN_PARAM_TARGET_SET;
-                        if(block->out_events->try_push(block->out_events, &e.header)) ++s.sent;
+                        block->out_events->try_push(block->out_events, &e.header);
                     }
                 }
                 s.phase[0] = std::fmod(s.phase[0] + hz / s.rate, 1);
