@@ -3,6 +3,15 @@
 # OSCAIRN_PLUGIN_CHECK points at a built binary) a plugin-check test.
 find_package(Threads REQUIRED)
 
+# What a host loads for TARGET: on macOS the .clap bundle directory, not the binary inside it.
+function(oscairn_loadable_path out target)
+    if(APPLE)
+        set(${out} $<TARGET_BUNDLE_DIR:${target}> PARENT_SCOPE)
+    else()
+        set(${out} $<TARGET_FILE:${target}> PARENT_SCOPE)
+    endif()
+endfunction()
+
 # oscairn_add_example TARGET FOLDER ID SOURCE KIND(synth|effect) PARAM
 # Builds the plugin as a loadable .clap, adds its self-test (always registered), and a
 # plugin-check test (only when OSCAIRN_PLUGIN_CHECK is set; labeled so CI can exclude it).
@@ -19,17 +28,12 @@ function(oscairn_add_example target folder id source kind param)
 
     add_executable(${target}-selftest ${folder}/selftest.cpp)
     target_link_libraries(${target}-selftest PRIVATE oscairn_clap_headers clap Threads::Threads ${CMAKE_DL_LIBS})
-    target_compile_options(${target}-selftest PRIVATE -Wall -Wextra -Wno-unused-parameter)
+    target_compile_options(${target}-selftest PRIVATE -Wall -Wextra)
     add_test(NAME ${target}-selftest COMMAND ${target}-selftest $<TARGET_FILE:${target}>)
     set_tests_properties(${target}-selftest PROPERTIES TIMEOUT 30 LABELS self-test)
 
     if(OSCAIRN_PLUGIN_CHECK)
-        # plugin-check wants the loadable itself: on macOS the .clap bundle directory, not the binary inside it.
-        if(APPLE)
-            set(checkPath $<TARGET_BUNDLE_DIR:${target}>)
-        else()
-            set(checkPath $<TARGET_FILE:${target}>)
-        endif()
+        oscairn_loadable_path(checkPath ${target})
         if(param)
             add_test(NAME ${target}-plugin-check COMMAND ${OSCAIRN_PLUGIN_CHECK} ${checkPath} ${id} ${kind} --param ${param})
         else()
@@ -60,11 +64,7 @@ if(OSCAIRN_JSON_RPC_TEST)
     find_package(Python3 COMPONENTS Interpreter)
 endif()
 if(OSCAIRN_JSON_RPC_TEST AND Python3_Interpreter_FOUND)
-    if(APPLE)
-        set(sharePath $<TARGET_BUNDLE_DIR:oscairn-example-instance-sharing>)
-    else()
-        set(sharePath $<TARGET_FILE:oscairn-example-instance-sharing>)
-    endif()
+    oscairn_loadable_path(sharePath oscairn-example-instance-sharing)
     add_test(NAME oscairn-example-instance-sharing-oscairn
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/instance-sharing/oscairn-sharing.py"
                 "${OSCAIRN_JSON_RPC_TEST}" "${sharePath}")
