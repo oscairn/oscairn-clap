@@ -102,6 +102,7 @@ pub struct UiHintsPlugin {
     lowpass: Cell<f64>,
     env: Cell<f64>,
     gate: Cell<bool>,
+    attacking: Cell<bool>,
     key: Cell<i16>,
     velocity: Cell<f64>,
 }
@@ -113,9 +114,11 @@ impl UiHintsPlugin {
     fn value(&self, id: u32) -> f64 {
         f64::from_bits(self.values[(id - 1) as usize].load(Ordering::Relaxed))
     }
+    /// Ignores an ID the plugin does not have: a host's event may carry any.
     fn set_value(&self, id: u32, v: f64) {
+        let Some(slot) = id.checked_sub(1).and_then(|i| self.values.get(i as usize)) else { return };
         let (min, max, _) = param_range(id);
-        self.values[(id - 1) as usize].store(v.clamp(min, max).to_bits(), Ordering::Relaxed);
+        slot.store(v.clamp(min, max).to_bits(), Ordering::Relaxed);
     }
 }
 
@@ -158,6 +161,7 @@ extern "C" fn activate(p: *const clap_plugin, sample_rate: f64, _min: u32, _max:
     me.lowpass.set(0.0);
     me.env.set(0.0);
     me.gate.set(false);
+    me.attacking.set(false);
     true
 }
 
@@ -170,6 +174,7 @@ extern "C" fn reset(p: *const clap_plugin) {
     me.phase.set(0.0);
     me.env.set(0.0);
     me.gate.set(false);
+    me.attacking.set(false);
 }
 
 /// The (param, value) of a core-space parameter event.
@@ -185,10 +190,10 @@ unsafe fn param_event(header: *const clap_event_header) -> Option<(u32, f64)> {
     Some((e.param_id, e.value))
 }
 
-/// The (type, body) of a core-space note event.
+/// The (type, key, velocity) of a core-space note event.
 ///
 /// Safety: `header` is a valid core-space event header owned by the host for this block.
-unsafe fn note_event(header: *const clap_event_header) -> Option<(u16, &'static clap_event_note)> {
+unsafe fn note_event(header: *const clap_event_header) -> Option<(u16, i16, f64)> {
     let h = unsafe { &*header };
     if h.space_id != CLAP_CORE_EVENT_SPACE_ID || h.size != std::mem::size_of::<clap_event_note>() as u32 {
         return None;
@@ -196,9 +201,32 @@ unsafe fn note_event(header: *const clap_event_header) -> Option<(u16, &'static 
     if !matches!(h.type_, CLAP_EVENT_NOTE_ON | CLAP_EVENT_NOTE_OFF | CLAP_EVENT_NOTE_CHOKE | CLAP_EVENT_NOTE_END) {
         return None;
     }
-    // Safety: size matches clap_event_note; a note event is a header prefix. 'static is a lie
-    // bounded by the block; the caller only reads the fields within process.
-    Some((h.type_, unsafe { &*(header as *const clap_event_note) }))
+    // Safety: size matches clap_event_note; a note event is a header prefix.
+    let e = unsafe { &*(header as *const clap_event_note) };
+    Some((h.type_, e.key, e.velocity))
+}
+
+/// Applies a block's (or a flush's) parameter and note events, all at its start.
+///
+/// Safety: `events` is the host's live input event list.
+unsafe fn handle_events(me: &UiHintsPlugin, events: &clap_input_events) {
+    let size = unsafe { (events.size.expect("host event list without size"))(events) };
+    for i in 0..size {
+        // Safety: the pointer is null or a valid event header owned by the host for this call.
+        let Some(header) = (unsafe { (events.get.expect("host event list without get"))(events, i).as_ref() }) else { continue };
+        if let Some((id, v)) = unsafe { param_event(header) } {
+            me.set_value(id, v);
+        } else if let Some((type_, key, velocity)) = unsafe { note_event(header) } {
+            if type_ == CLAP_EVENT_NOTE_ON {
+                me.key.set(key);
+                me.velocity.set(velocity);
+                me.gate.set(true);
+                me.attacking.set(true);
+            } else {
+                me.gate.set(false); // OFF, CHOKE and END all close the one gate
+            }
+        }
+    }
 }
 
 extern "C" fn process(p: *const clap_plugin, block: *const clap_process) -> clap_process_status {
@@ -218,22 +246,7 @@ extern "C" fn process(p: *const clap_plugin, block: *const clap_process) -> clap
     };
 
     if let Some(in_events) = unsafe { block.in_events.as_ref() } {
-        let size = unsafe { (in_events.size.expect("host event list without size"))(in_events) };
-        for i in 0..size {
-            // Safety: the pointer is null or a valid event header owned by the host for this block.
-            let Some(header) = (unsafe { (in_events.get.expect("host event list without get"))(in_events, i).as_ref() }) else { continue };
-            if let Some((id, v)) = unsafe { param_event(header) } {
-                me.set_value(id, v);
-            } else if let Some((type_, n)) = unsafe { note_event(header) } {
-                if type_ == CLAP_EVENT_NOTE_ON {
-                    me.key.set(n.key);
-                    me.velocity.set(n.velocity);
-                    me.gate.set(true);
-                } else {
-                    me.gate.set(false); // OFF, CHOKE and END all close the one gate
-                }
-            }
-        }
+        unsafe { handle_events(me, in_events) };
     }
 
     let sr = me.sample_rate.get();
@@ -241,16 +254,19 @@ extern "C" fn process(p: *const clap_plugin, block: *const clap_process) -> clap
         (me.value(P_ATTACK), me.value(P_DECAY), me.value(P_SUSTAIN), me.value(P_RELEASE), me.value(P_CUTOFF), me.value(P_LEVEL));
     let freq = 440.0 * 2f64.powf((me.key.get().max(0) as f64 - 69.0) / 12.0);
     let lp_alpha = (2.0 * std::f64::consts::PI * cutoff / sr).min(1.0);
-    // A simple linear-attack / exponential-decay-to-sustain / exponential-release ADSR.
+    // An ADSR as the envelope view declares it: a linear attack to full, then an exponential
+    // decay to the sustain level and an exponential release, each `seconds` long, roughly.
     let a_step = 1.0 / (attack * sr);
     let d_k = (-1.0 / (decay * sr)).exp();
     let r_k = (-1.0 / (release * sr)).exp();
     for frame in 0..block.frames_count as usize {
         me.phase.set((me.phase.get() + freq / sr) % 1.0);
         let mut env = me.env.get();
-        if me.gate.get() {
-            // Attack to the sustain level (no decay stage: the attack reaches it), then relax to it.
-            env = if env < sustain { (env + a_step).min(sustain) } else { (env * d_k).max(sustain) };
+        if me.attacking.get() {
+            env = (env + a_step).min(1.0);
+            me.attacking.set(me.gate.get() && env < 1.0);
+        } else if me.gate.get() {
+            env = sustain + (env - sustain) * d_k;
         } else {
             env *= r_k;
             if env < 1e-5 {
@@ -301,7 +317,13 @@ extern "C" fn params_get_value(p: *const clap_plugin, id: u32, out: *mut f64) ->
     true
 }
 
-extern "C" fn params_flush(_p: *const clap_plugin, _in: *const clap_input_events, _out: *const clap_output_events) {}
+/// Parameter changes while the plugin is not processing arrive here.
+extern "C" fn params_flush(p: *const clap_plugin, in_events: *const clap_input_events, _out: *const clap_output_events) {
+    // Safety: the host passes its live input event list, or null.
+    if let Some(in_events) = unsafe { in_events.as_ref() } {
+        unsafe { handle_events(plugin(p), in_events) };
+    }
+}
 
 extern "C" fn audio_ports_count(_p: *const clap_plugin, is_input: bool) -> u32 {
     u32::from(!is_input)
@@ -467,6 +489,7 @@ extern "C" fn factory_create(_f: *const clap_plugin_factory, _host: *const clap_
         lowpass: Cell::new(0.0),
         env: Cell::new(0.0),
         gate: Cell::new(false),
+        attacking: Cell::new(false),
         key: Cell::new(60),
         velocity: Cell::new(0.8),
     };

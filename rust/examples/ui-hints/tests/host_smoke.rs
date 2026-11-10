@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 //! Drives the plugin the way a host does, through the exported `clap_entry`: factory, create,
-//! init, activate, a block with a note-on and a parameter event, then the oscairn.ui table.
+//! init, a parameter flush, activate, a block with a note-on and a parameter event, then the
+//! oscairn.ui table.
 
 use ui_hints::clap_entry;
 use clap_sys::events::{clap_event_header, clap_event_note, clap_event_param_value, clap_input_events, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_ON, CLAP_EVENT_PARAM_VALUE};
+use clap_sys::ext::params::{clap_plugin_params, CLAP_EXT_PARAMS};
 use clap_sys::factory::plugin_factory::{clap_plugin_factory, CLAP_PLUGIN_FACTORY_ID};
 use clap_sys::plugin::clap_plugin;
 use clap_sys::process::clap_process;
-use std::ffi::CStr;
 
 extern "C" fn in_size(_l: *const clap_input_events) -> u32 {
     2
@@ -53,6 +54,10 @@ extern "C" fn in_get(_l: *const clap_input_events, index: u32) -> *const clap_ev
     }
 }
 
+extern "C" fn flush_size(_l: *const clap_input_events) -> u32 {
+    1
+}
+
 #[test]
 fn plugin_makes_sound_and_answers_ui_hints() {
     unsafe {
@@ -60,11 +65,19 @@ fn plugin_makes_sound_and_answers_ui_hints() {
         let factory = (clap_entry.get_factory.unwrap())(CLAP_PLUGIN_FACTORY_ID.as_ptr()).cast::<clap_plugin_factory>();
         assert!(!factory.is_null());
         assert_eq!(((*factory).get_plugin_count.unwrap())(factory), 1);
-        let id = CStr::from_bytes_with_nul(b"com.oscairn.examples.ui-hints\0").unwrap();
+        let id = c"com.oscairn.examples.ui-hints";
         let plugin = ((*factory).create_plugin.unwrap())(factory, std::ptr::null(), id.as_ptr()) as *mut clap_plugin;
         assert!(!plugin.is_null());
 
         assert!(((*plugin).init.unwrap())(plugin));
+
+        // Level (default 0.5) set through flush, as a host does while not processing.
+        let params = ((*plugin).get_extension.unwrap())(plugin, CLAP_EXT_PARAMS.as_ptr()).cast::<clap_plugin_params>();
+        let flush_events = clap_input_events { ctx: std::ptr::null_mut(), size: Some(flush_size), get: Some(in_get) };
+        ((*params).flush.unwrap())(plugin, &flush_events, std::ptr::null());
+        let mut level = 0.0;
+        assert!(((*params).get_value.unwrap())(plugin, 2, &mut level));
+        assert_eq!(level, 1.0);
         assert!(((*plugin).activate.unwrap())(plugin, 48000.0, 64, 512));
         assert!(((*plugin).start_processing.unwrap())(plugin));
 
@@ -99,7 +112,7 @@ fn plugin_makes_sound_and_answers_ui_hints() {
         assert!(energy > 1e-4, "the block after a note-on has sound: energy {energy}");
 
         // oscairn.ui answers with the declared role for Cutoff.
-        let ui_id = CStr::from_bytes_with_nul(b"oscairn.ui/draft-5\0").unwrap();
+        let ui_id = c"oscairn.ui/draft-5";
         let ui = ((*plugin).get_extension.unwrap())(plugin, ui_id.as_ptr()).cast::<oscairn_clap_sys::oscairn_plugin_ui_t>();
         assert!(!ui.is_null());
         let mut hint: oscairn_clap_sys::oscairn_param_hint_t = std::mem::zeroed();
