@@ -23,7 +23,10 @@ fn main() {
         .filter(|name| name.ends_with(".h"))
         .collect();
     headers.sort();
-    let all: String = headers.iter().map(|h| format!("#include <oscairn-clap/{h}>\n")).collect();
+    // glibc spells UINT64_MAX through a function-like macro bindgen cannot evaluate, so the
+    // macros using it vanish on Linux; one plain literal gives every platform the same value.
+    let mut all = String::from("#include <stdint.h>\n#undef UINT64_MAX\n#define UINT64_MAX 18446744073709551615ULL\n");
+    all.extend(headers.iter().map(|h| format!("#include <oscairn-clap/{h}>\n")));
     let all_path = out.join("oscairn_clap_all.h");
     std::fs::write(&all_path, all).expect("writing oscairn_clap_all.h failed");
 
@@ -46,8 +49,10 @@ fn main() {
     // Each `static const char NAME[]` (an extension or event-space ID) becomes `ids::NAME`, a
     // `&CStr` over bindgen's own byte string.
     let mut ids = String::from("pub mod ids {\n    use core::ffi::CStr;\n");
-    for line in rust.lines() {
-        if let Some(name) = line.strip_prefix("pub const ").and_then(|rest| rest.split_once(": &[u8; ")).map(|(name, _)| name) {
+    // Whitespace-blind, as the output is unformatted where rustfmt is not installed.
+    for chunk in rust.split("pub const ").skip(1) {
+        let decl: String = chunk.split('=').next().unwrap().split_whitespace().collect();
+        if let Some((name, _)) = decl.split_once(':').filter(|(_, ty)| ty.starts_with("&[u8;")) {
             ids.push_str(&format!("    pub const {name}: &CStr = crate::id(crate::{name});\n"));
         }
     }

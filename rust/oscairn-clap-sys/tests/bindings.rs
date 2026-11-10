@@ -28,6 +28,8 @@ fn declared_names(header: &str) -> Vec<String> {
 #[test]
 fn every_header_is_bound() {
     let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../include/oscairn-clap");
+    // Whitespace-blind, as the output is unformatted where rustfmt is not installed.
+    let bindings: String = BINDINGS.split_whitespace().collect();
     let mut headers = 0;
     for entry in std::fs::read_dir(dir).unwrap() {
         let path = entry.unwrap().path();
@@ -38,9 +40,9 @@ fn every_header_is_bound() {
         let names = declared_names(&std::fs::read_to_string(&path).unwrap());
         assert!(!names.is_empty(), "{} declares nothing this test recognizes", path.display());
         for name in names {
-            let bound = [format!("pub const {name}:"), format!("pub type {name} ="), format!("pub mod {name} {{")]
+            let bound = [format!("pubconst{name}:"), format!("pubtype{name}="), format!("pubmod{name}{{")]
                 .iter()
-                .any(|decl| BINDINGS.contains(decl.as_str()));
+                .any(|decl| bindings.contains(decl.as_str()));
             assert!(bound, "{name} from {} is not in the bindings", path.display());
         }
     }
