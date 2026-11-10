@@ -3,9 +3,8 @@
 Several of Oscairn's parts play **one instance** of this plugin, each part with its own
 sound, its own MIDI channel and its own output port (RFC 0021). What that gives the player:
 a multitimbral Performance costs one instance's memory and one voice pool instead of one
-per part — the sounds are prepared in the same instance they play in, switched at the cue
-without a reload, and one part's held note never steals another's voices blindly: they
-share the pool through `oscairn.voice-budget`'s per-part entries.
+per part, and the sounds are prepared in the same instance they play in, switched at the
+cue without a reload.
 
 It is not one extension but a combination; this example is what Oscairn checks
 (`docs/fallback-matrix.md`, "Parts sharing one instance"):
@@ -48,15 +47,9 @@ part moves only its own sound.
 
 ## Without any one requirement
 
-Remove any single line above and the pair is no longer shareable: `instruments.share`
-answers error -32004 naming what is missing (measured against the single-output
-sound-snapshots example: "cannot share its instance: it needs native sound contexts, an
-output bus parameter, sounds saved on their own and one sound on every channel"), while
-`graph.add` and a Performance open quietly give each part **an instance of its own** — a whole instance's memory
-and CPU and one voice pool per part. The rest of the extensions still work: instant
-switching inside each instance (sound contexts), instant Performance changes
-(sound-snapshots' `prepare`/ring-out), editor roles (`oscairn.ui`). It is the combination
-that lets the host route two parts' audio out of one instance and label each part's
-controls: without a second output port or the bus parameter it could not tell two parts'
-audio apart, and without `save_sound`/`sound_values` it could not save one part's sound
-on its own or show its values.
+Without any one of them the plugin still works, but parts no longer share it:
+`instruments.share` answers an error naming what is missing, and `graph.add` or opening a
+Performance quietly gives each part an instance of its own. Without a second output port
+or the bus parameter the host could not tell two parts' audio apart; without
+`save_sound`/`sound_values` it could not save one part's sound on its own or show its
+values.

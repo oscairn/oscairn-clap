@@ -11,11 +11,11 @@ under demo is deliberately small. Each folder has its own `README.md`.
 | `sound-contexts` | `oscairn.sound-contexts` draft 5 | `org.oscairn.example.sound-contexts` |
 | `sound-snapshots` | `oscairn.sound-snapshots` draft 4 | `org.oscairn.example.sound-snapshots` |
 | `voice-budget` | `oscairn.voice-budget` draft 1 | `org.oscairn.example.voice-budget` |
-| `effect-contexts` | `oscairn.effect-contexts` draft 3 | `org.oscairn.example.effect-contexts` |
+| `effect-contexts` | `oscairn.effect-contexts` | `org.oscairn.example.effect-contexts` |
 | `param-target` | `oscairn.param-target` (lane-only modulator) | `org.oscairn.example.param-target` |
 | `beat` | `oscairn.beat` (free-running beat events) | `org.oscairn.example.beat` |
 | `harmony` | `oscairn.harmony` (key/scale of the part) | `org.oscairn.example.harmony` |
-| `assets` | `oscairn.asset-dependencies` draft 2 | `org.oscairn.example.assets` |
+| `assets` | `oscairn.assets` and `oscairn.asset-dependencies` draft 2 | `org.oscairn.example.assets` |
 | `instance-sharing` | parts sharing one instance (sound contexts + sound-snapshots draft 4 + output-bus role) | `org.oscairn.example.instance-sharing` |
 
 ## Build
@@ -47,4 +47,7 @@ With `-DOSCAIRN_JSON_RPC_TEST=/path/to/oscairn-json-rpc-test` (also built from O
 the instance-sharing example registers one more test (label `oscairn-sharing`): two parts
 of its plugin sharing one instance in a running Oscairn, checked through `graph.get`.
 
-`RESULTS.md` records what passed and failed on the machine these were developed on.
+CI builds every example and runs the self-tests on macOS and Linux; the `plugin-check` and
+`oscairn-sharing` labels need a built Oscairn, so they run only where one is. plugin-check
+gets no `--param` for param-target: its lanes move other plugins' parameters, not its own
+output.
