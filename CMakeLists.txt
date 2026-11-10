@@ -6,6 +6,8 @@ project(oscairn-clap-examples VERSION 0.1.0 LANGUAGES CXX)
 option(BUILD_TESTING "Build and register the example self-tests" ON)
 set(OSCAIRN_PLUGIN_CHECK "" CACHE FILEPATH
     "Path to a built oscairn-plugin-check binary; when set, its checks are registered as the plugin-check CTest label")
+set(OSCAIRN_JSON_RPC_TEST "" CACHE FILEPATH
+    "Path to a built oscairn-json-rpc-test binary; when set, the instance-sharing example's Oscairn sharing test is registered as the oscairn-sharing CTest label")
 
 include(CTest)
 include(FetchContent)

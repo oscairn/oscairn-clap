@@ -126,6 +126,8 @@ A plugin is shared only when **all** of these hold (Oscairn checks each):
 - at a Performance load: no effect contexts made from it, and audio taken only from its main
   output.
 
+Example: [`examples/instance-sharing/`](../examples/instance-sharing/).
+
 The host sets the bus per sound with a parameter event on the part's channel, so the plugin must
 apply per-channel parameter events to the sound that channel selects (the SDK's Engine does).
 Voices keep the port they started on. An instance holds as many parts as it has free sounds,

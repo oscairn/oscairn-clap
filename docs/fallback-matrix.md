@@ -35,7 +35,8 @@ one instance only when the plugin has **all** of:
 At run time Oscairn also needs one sound selected on every channel when the first part joins, a
 plugin that has not failed, and, at a Performance load, no effect contexts made from it and audio
 taken only from its main output. Without all of it, each part keeps an instance of its own. See
-[sound-snapshots](sound-snapshots.md#parts-sharing-one-instance).
+[sound-snapshots](sound-snapshots.md#parts-sharing-one-instance) and the example
+[`examples/instance-sharing/`](../examples/instance-sharing/).
 
 ## Not an extension, but depended on
 

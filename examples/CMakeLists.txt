@@ -50,3 +50,23 @@ oscairn_add_example(oscairn-example-param-target param-target org.oscairn.exampl
 oscairn_add_example(oscairn-example-beat beat org.oscairn.example.beat beat/beat.cpp synth 1=0.1)
 oscairn_add_example(oscairn-example-harmony harmony org.oscairn.example.harmony harmony/harmony.cpp synth 1=0.1)
 oscairn_add_example(oscairn-example-assets assets org.oscairn.example.assets assets/assets.cpp effect 1=0.25)
+oscairn_add_example(oscairn-example-instance-sharing instance-sharing org.oscairn.example.instance-sharing instance-sharing/instance_sharing.cpp synth 1=0.1)
+
+# Parts sharing one instance, against a running Oscairn: two parts of this plugin land on one
+# instance, each with its own sound, channel and bus (graph.get's per-node `shared`). Only
+# registered when OSCAIRN_JSON_RPC_TEST points at a built oscairn-json-rpc-test; labeled so CI
+# can exclude it (it needs a built Oscairn, like plugin-check).
+if(OSCAIRN_JSON_RPC_TEST)
+    find_package(Python3 COMPONENTS Interpreter)
+endif()
+if(OSCAIRN_JSON_RPC_TEST AND Python3_Interpreter_FOUND)
+    if(APPLE)
+        set(sharePath $<TARGET_BUNDLE_DIR:oscairn-example-instance-sharing>)
+    else()
+        set(sharePath $<TARGET_FILE:oscairn-example-instance-sharing>)
+    endif()
+    add_test(NAME oscairn-example-instance-sharing-oscairn
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/instance-sharing/oscairn-sharing.py"
+                "${OSCAIRN_JSON_RPC_TEST}" "${sharePath}")
+    set_tests_properties(oscairn-example-instance-sharing-oscairn PROPERTIES TIMEOUT 300 LABELS oscairn-sharing)
+endif()
