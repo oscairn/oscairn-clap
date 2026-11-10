@@ -14,8 +14,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
-#include <iostream>
-#include <sstream>
+#include <istream>
+#include <ostream>
 
 namespace
 {
@@ -114,23 +114,13 @@ namespace
     // A parameter edit on a channel lands on the sound that channel selects.
     void Synth::applyParam(const clap_event_header_t* header)
     {
-        auto& s = *this;
-        if(header->space_id != CLAP_CORE_EVENT_SPACE_ID) return;
-        clap_id id = 0;
-        double value = 0;
-        int16_t channel = -1;
-        if(header->type == CLAP_EVENT_PARAM_VALUE)
-        {
-            const auto& e = *reinterpret_cast<const clap_event_param_value_t*>(header);
-            id = e.param_id;
-            value = e.value;
-            channel = e.channel;
-        }
-        else return;
-        if(id < 1 || id > names.size() || !std::isfinite(value) || channel < -1 || channel > 15) return;
-        value = std::clamp(value, 0.0, maximum[id - 1]);
+        if(header->space_id != CLAP_CORE_EVENT_SPACE_ID || header->type != CLAP_EVENT_PARAM_VALUE) return;
+        const auto& e = *reinterpret_cast<const clap_event_param_value_t*>(header);
+        const auto id = e.param_id;
+        if(id < 1 || id > names.size() || !std::isfinite(e.value) || e.channel < -1 || e.channel > 15) return;
+        const double value = std::clamp(e.value, 0.0, maximum[id - 1]);
         for(int ch = 0; ch < 16; ++ch)
-            if(channel < 0 || channel == ch) contexts[s.selected[ch]].patch.values[id - 1] = value;
+            if(e.channel < 0 || e.channel == ch) contexts[selected[ch]].patch.values[id - 1] = value;
     }
 
     void Synth::selectedGlobally(Context& next, const clap_output_events_t* output)
