@@ -29,7 +29,8 @@ namespace
         clap_plugin_t api{};
         const clap_host_t* host = nullptr;
         uint16_t harmonySpace = UINT16_MAX; // the id the host's event registry returned
-        double rate = 48000, phase = 0;
+        double rate = 48000;
+        double phase[128]{}; // each key's own, in cycles: one shared phase scaled per key clicks at each wrap
         std::atomic<double> level{.5};
         oscairn_harmony_t last{}; // the latest reading, which holds between events: audio thread, or main while inactive
     };
@@ -181,8 +182,12 @@ namespace
                 double sum = 0;
                 if(s.last.held[0] | s.last.held[1])
                     for(int key = 24; key < 108; ++key) // a sine per held key
-                        if(s.last.held[key / 64] >> (key % 64) & 1) sum += std::sin(s.phase * (1.0 + key / 64.0));
-                s.phase = std::fmod(s.phase + 220.0 * 2 * M_PI / s.rate, 2 * M_PI);
+                        if(s.last.held[key / 64] >> (key % 64) & 1)
+                        {
+                            sum += std::sin(2 * M_PI * s.phase[key]);
+                            s.phase[key] += 440.0 * std::exp2((key - 69) / 12.0) / s.rate;
+                            s.phase[key] -= std::floor(s.phase[key]);
+                        }
                 const auto out = float(sum * s.level.load() / 4);
                 block->audio_outputs[0].data32[0][i] = block->audio_outputs[0].data32[1][i] = out;
             }

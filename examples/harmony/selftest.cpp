@@ -43,6 +43,19 @@ int main(int argc, char** argv)
     check(awake == CLAP_PROCESS_CONTINUE && loud > .05, "the held chord sounds");
     const auto [stillHeld, stillLoud] = render(nullptr); // no new event: the reading holds
     check(stillHeld == CLAP_PROCESS_CONTINUE && stillLoud > .05, "the last harmony holds between events");
+    // A second of the chord moves smoothly from sample to sample, across blocks too: no clicks.
+    {
+        float out[2][256]{}, largestStep = 0;
+        float last = NAN; // the first sample has nothing before it
+        float* channels[2]{out[0], out[1]};
+        for(int block = 0; block < 188; ++block)
+        {
+            EventList none;
+            plugin.process(256, none, channels);
+            for(float sample : out[0]) { if(!std::isnan(last)) largestStep = std::max(largestStep, std::fabs(sample - last)); last = sample; }
+        }
+        check(largestStep < .03f, "the chord has no clicks");
+    }
     plugin.plugin->reset(plugin.plugin);
     check(render(nullptr).second > .05, "and through a reset");
 
