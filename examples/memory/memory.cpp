@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 //
-// oscairn.memory: a gain effect that says up front what activating would allocate, so a host
-// near its memory limit can refuse it before the allocation instead of after. The delay line
-// here is the classic case (see plugins/delay: two seconds per channel); the estimate must be
-// honest — the host counts the larger of the declaration and its own measurement.
+// oscairn.memory: a delay that says up front what activating would allocate, so a host near its
+// memory limit can refuse it before the allocation instead of after. A delay line is the classic
+// case (Oscairn's plugins/delay); this one is two seconds, mono, its output on both channels. The
+// estimate must be honest: the host counts the larger of the declaration and its own measurement.
 // See docs/rfcs/0025-resource-budgets.md#declarations.
 #include <clap/clap.h>
 #include <oscairn-clap/memory.h>
@@ -18,43 +18,41 @@
 
 namespace
 {
-    constexpr double seconds = 2.0; // the delay line's length per channel
+    constexpr double seconds = 2.0; // the delay line's length
     constexpr double mixInitial = .5;
 
     const char* const features[] = {CLAP_PLUGIN_FEATURE_AUDIO_EFFECT, CLAP_PLUGIN_FEATURE_DELAY, CLAP_PLUGIN_FEATURE_STEREO, nullptr};
     const clap_plugin_descriptor_t descriptor{
         CLAP_VERSION_INIT, "org.oscairn.example.memory", "Oscairn Example Memory", "Oscairn", "", "", "", "0.1.0",
-        "A gain that declares what activating allocates (oscairn.memory)", features};
+        "A delay that declares what activating allocates (oscairn.memory)", features};
 
     struct Plugin
     {
         clap_plugin_t api{};
         std::atomic<double> mix{mixInitial};
-        std::vector<float> line; // dry/wet crossfade over one fixed delay; allocated at activate
+        std::vector<float> line; // allocated at activate, freed at deactivate
         size_t write = 0;
         bool active = false;
     };
     Plugin& self(const clap_plugin_t* p) { return *static_cast<Plugin*>(p->plugin_data); }
 
-    // What activating holds: the delay line, two channels. Nothing else; no assets.
-    bool fill(double rate, oscairn_memory_t* out)
-    {
-        if(!out || !std::isfinite(rate) || rate < 1) return false;
-        out->shared_bytes = 0;
-        out->context_bytes = uint64_t(2 * (seconds * rate + 1)) * sizeof(float);
-        out->asset_bytes = 0;
-        return true;
-    }
+    // The delay line's length at a rate: activate allocates exactly this, and estimate declares it.
+    size_t lineFrames(double rate) { return size_t(seconds * rate) + 1; }
     const oscairn_plugin_memory_t memory{
-        // Before activating: what activating would allocate. A fresh Plugin holds nothing, so
-        // the estimate comes from the rate alone; it makes no allocation of that size.
-        [](const clap_plugin_t*, double rate, uint32_t, oscairn_memory_t* out) -> bool { return fill(rate, out); },
-        // After activating: what it holds now, measured from the line it actually made.
+        // Before activating: what activating would allocate, the delay line and nothing else (no
+        // assets). It comes from the rate alone, and allocates nothing.
+        [](const clap_plugin_t*, double rate, uint32_t, oscairn_memory_t* out) -> bool
+        {
+            if(!out || !std::isfinite(rate) || rate < 1) return false;
+            *out = {0, lineFrames(rate) * sizeof(float), 0};
+            return true;
+        },
+        // After activating: what it holds now, measured from the line it made.
         [](const clap_plugin_t* p, oscairn_memory_t* out) -> bool
         {
             const auto& s = self(p);
             if(!s.active || !out) return false;
-            *out = {0, uint64_t(2 * s.line.capacity()) * sizeof(float), 0};
+            *out = {0, s.line.capacity() * sizeof(float), 0};
             return true;
         }};
 
@@ -157,7 +155,7 @@ namespace
         {
             if(!std::isfinite(rate) || rate < 8000 || rate > 192000) return false;
             auto& s = self(pl);
-            s.line.assign(size_t(seconds * rate) + 1, 0.f);
+            s.line.assign(lineFrames(rate), 0.f);
             s.write = 0;
             s.active = true;
             return true;

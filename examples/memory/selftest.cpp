@@ -16,17 +16,14 @@ int main(int argc, char** argv)
           "the estimate names the delay line's bytes and no assets");
     check(memory->estimate(plugin.plugin, 96000, 512, &high) && high.context_bytes > low.context_bytes,
           "the estimate grows with the sample rate");
-    const uint64_t sum = low.shared_bytes + low.context_bytes + low.asset_bytes;
-    check(sum >= low.context_bytes, "the three parts add up without overflowing");
 
-    // current before activating: not known. After: what it holds, exactly what it estimated at
-    // that rate (Plugin::activate uses 48000).
+    // current before activating: not known. After: what it holds, what it estimated at that
+    // rate (Plugin::activate uses 48000).
     oscairn_memory_t at48{};
     check(memory->estimate(plugin.plugin, 48000, 256, &at48), "the estimate answers at 48 kHz");
     check(!memory->current(plugin.plugin, &high), "current refuses before activating");
     check(plugin.activate(), "activates");
-    check(memory->current(plugin.plugin, &high) && high.context_bytes >= at48.context_bytes &&
-              high.context_bytes <= at48.context_bytes + 2 * 64 * sizeof(float),
+    check(memory->current(plugin.plugin, &high) && high.context_bytes == at48.context_bytes,
           "what it holds after activating is what it estimated at that rate");
 
     // And the plugin works: Mix 1 must hand the delayed signal through.
