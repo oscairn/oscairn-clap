@@ -33,6 +33,7 @@ namespace
         int32_t noteId = -1;
         int16_t channel = 0, key = 0;
         double velocity = 0, level = 0, phase = 0;
+        double volume = 1; // CLAP_NOTE_EXPRESSION_VOLUME, linear
         uint32_t chokeLeft = 0, chokeLength = 0; // the fade of a voice given up
         uint64_t started = 0;
     };
@@ -48,6 +49,20 @@ namespace
     };
     Plugin& self(const clap_plugin_t* p) { return *static_cast<Plugin*>(p->plugin_data); }
 
+    // A voice's gain now: envelope, velocity, volume expression and the fade of a voice given up
+    // (voice-budget.h's loudness).
+    double loudness(const Voice& v)
+    {
+        const double fade = v.chokeLength ? v.chokeLeft / double(v.chokeLength) : 1.0;
+        return v.level * v.velocity * v.volume * fade;
+    }
+
+    // Whether an event's note address (-1: any) names this voice.
+    bool addressed(const Voice& v, int32_t noteId, int16_t channel, int16_t key)
+    {
+        return v.active && (noteId < 0 || v.noteId == noteId) && (channel < 0 || v.channel == channel) && (key < 0 || v.key == key);
+    }
+
     // The voice to give up for a new one, by the header's order. A plugin without sound contexts
     // reads context 0's settings, so every candidate says context 0, never selected.
     int victim(Plugin& s)
@@ -56,9 +71,24 @@ namespace
         for(size_t i = 0; i < pool; ++i)
             if(s.voices[i].active)
                 described[i] = {0, false, s.voices[i].held, s.voices[i].chokeLength != 0, false,
-                                s.voices[i].level * s.voices[i].velocity, s.voices[i].started};
+                                loudness(s.voices[i]), s.voices[i].started};
         return oscairn::voices::victim(pool, [&](size_t i) { return s.voices[i].active ? &described[i] : nullptr; }, s.limits,
                                        oscairn::voices::none);
+    }
+
+    // Past the limit set_limits gave, fade voices out by the header's order until it holds.
+    void keepWithinLimit(Plugin& s)
+    {
+        uint32_t sounding = 0;
+        for(const auto& v : s.voices) sounding += v.active && !v.chokeLength;
+        for(; s.limits.limit && sounding > s.limits.limit; --sounding)
+        {
+            const int i = victim(s);
+            if(i < 0) break;
+            auto& v = s.voices[size_t(i)];
+            v.held = false;
+            v.chokeLength = v.chokeLeft = s.chokeFrames;
+        }
     }
 
     void startVoice(Plugin& s, const clap_event_note_t& note)
@@ -68,8 +98,8 @@ namespace
             if(!v.active) { slot = &v; break; }
         if(!slot)
         {
-            // The pool is full: the cut is a voice already fading (a release or a steal), the
-            // furthest gone first; none is fading, fade the victim the order names and take it.
+            // The pool is full, so there is no slot to fade in: cut a voice already fading (a choke or
+            // a steal), the furthest gone first; when none is, cut the victim the order names.
             for(auto& v : s.voices)
                 if(v.chokeLength && (!slot || v.chokeLeft < slot->chokeLeft)) slot = &v;
             if(!slot)
@@ -158,8 +188,7 @@ namespace
             return true;
         }};
 
-    // Every entry is required: honors_volume says every voice follows the volume expression
-    // (it does: the fade multiplies it), the rest is the budget's own.
+    // Every entry is required. honors_volume: every voice follows CLAP_NOTE_EXPRESSION_VOLUME.
     const oscairn_plugin_voice_budget_t budget{
         [](const clap_plugin_t*) -> bool { return true; },
         [](const clap_plugin_t* p, uint32_t limit, const oscairn_voice_budget_context_t* contexts, uint32_t count)
@@ -179,7 +208,7 @@ namespace
             auto& s = self(p);
             oscairn::voices::Report<pool> report;
             for(const auto& v : s.voices)
-                if(v.active) report.add(v.noteId, 0, v.channel, v.key, v.level * v.velocity);
+                if(v.active) report.add(v.noteId, 0, v.channel, v.key, loudness(v));
             return report.write(out, capacity);
         }};
 
@@ -213,6 +242,7 @@ namespace
             auto& s = self(pl);
             if(block->audio_outputs_count < 1 || block->audio_outputs[0].channel_count < 2) return CLAP_PROCESS_ERROR;
             params.flush(pl, block->in_events, block->out_events);
+            keepWithinLimit(s); // set_limits takes effect at the block's start
             uint32_t next = 0;
             const uint32_t count = block->in_events->size(block->in_events);
             float* out[2]{block->audio_outputs[0].data32[0], block->audio_outputs[0].data32[1]};
@@ -228,47 +258,36 @@ namespace
                     {
                         const auto& n = *reinterpret_cast<const clap_event_note_t*>(h);
                         for(auto& v : s.voices)
-                            if(v.active && (n.note_id < 0 || v.noteId == n.note_id) && (n.key < 0 || v.key == n.key) &&
-                               (n.channel < 0 || v.channel == n.channel))
+                            if(addressed(v, n.note_id, n.channel, n.key))
                             {
                                 v.held = false;
                                 if(h->type == CLAP_EVENT_NOTE_CHOKE && !v.chokeLength) v.chokeLength = v.chokeLeft = s.chokeFrames;
                             }
                     }
+                    else if(h->type == CLAP_EVENT_NOTE_EXPRESSION)
+                    {
+                        const auto& e = *reinterpret_cast<const clap_event_note_expression_t*>(h);
+                        if(e.expression_id != CLAP_NOTE_EXPRESSION_VOLUME || !std::isfinite(e.value)) continue;
+                        for(auto& v : s.voices)
+                            if(addressed(v, e.note_id, e.channel, e.key)) v.volume = std::clamp(e.value, 0.0, 4.0);
+                    }
                 }
-                // Past a limit set_limits lowered, give voices up at the block's start.
                 double sum = 0;
                 for(auto& v : s.voices)
                 {
                     if(!v.active) continue;
-                    const double attack = 1.0 / (0.005 * s.rate);
-                    if(v.held && !v.chokeLength) v.level = std::min(1.0, v.level + attack);
-                    else v.level -= attack;
-                    if(v.chokeLength)
-                    {
-                        v.chokeLeft = v.chokeLeft ? v.chokeLeft - 1 : 0;
-                        v.level *= v.chokeLeft / double(v.chokeLength);
-                        if(!v.chokeLeft) { v = Voice{}; continue; }
-                    }
+                    const double step = 1.0 / (0.005 * s.rate); // a 5 ms attack and release
+                    if(v.chokeLength) { if(--v.chokeLeft == 0) { v = Voice{}; continue; } } // its fade runs down, linear
+                    else if(v.held) v.level = std::min(1.0, v.level + step);
+                    else v.level -= step;
                     if(v.level <= 0) { v = Voice{}; continue; }
-                    sum += std::sin(v.phase) * v.level * v.velocity;
+                    sum += std::sin(v.phase) * loudness(v);
                     v.phase = std::fmod(v.phase + 440.0 * 2 * M_PI * (1 + v.key / 128.0) / s.rate, 2 * M_PI);
                 }
                 const auto sample = float(sum * .25 * s.level.load());
                 out[0][i] = out[1][i] = sample;
             }
-            // Keep within the limit from the next block: give the quietest, oldest way first.
-            uint32_t sounding = 0;
-            for(const auto& v : s.voices) sounding += v.active && !v.chokeLength;
-            while(s.limits.limit && sounding > s.limits.limit)
-            {
-                const int i = victim(s);
-                if(i < 0) break;
-                auto& v = s.voices[size_t(i)];
-                v.held = false;
-                if(!v.chokeLength) v.chokeLength = v.chokeLeft = s.chokeFrames;
-                --sounding;
-            }
+            const bool sounding = std::any_of(s.voices.begin(), s.voices.end(), [](const Voice& v) { return v.active; });
             return sounding ? CLAP_PROCESS_CONTINUE : CLAP_PROCESS_SLEEP;
         };
         p.get_extension = [](const clap_plugin_t*, const char* id) -> const void*

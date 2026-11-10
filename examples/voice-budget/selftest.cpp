@@ -12,7 +12,7 @@ int main(int argc, char** argv)
     check(budget && budget->honors_volume && budget->set_limits && budget->active_voices && budget->notes,
           "oscairn.voice-budget/draft-1 is offered complete");
     if(!budget) return finish("oscairn-example-voice-budget");
-    check(budget->honors_volume(plugin.plugin), "it honors the volume expression, so the host may fade by it");
+    check(budget->honors_volume(plugin.plugin), "it says it honors the volume expression (checked below)");
     check(plugin.activate(), "activates and starts processing");
 
     float out[2][256]{};
@@ -46,16 +46,14 @@ int main(int argc, char** argv)
     for(uint32_t i = 0; i < reported; ++i) loudness &= notes[i].voices >= 1 && notes[i].loudness > 0 && notes[i].loudness <= 1;
     check(loudness, "each note names its voices and a loudness in range");
 
-    // The host's budget: two voices. The plugin must get there itself, fading what it gives up.
+    // The host's budget: two voices. The plugin must get there itself, fading what it gives up:
+    // a voice given up fades for 3 ms (144 frames), counted until it has gone.
     budget->set_limits(plugin.plugin, 2, nullptr, 0); // between blocks, never during process
     EventList empty;
-    plugin.process(256, empty, channels); // the limit lands at this block's start
-    double afterCut = 0;
-    for(uint32_t f = 0; f < 256; ++f) afterCut += std::abs(out[0][f]);
+    plugin.process(64, empty, channels); // the limit lands at this block's start
+    check(budget->active_voices(plugin.plugin, nullptr) > 2, "64 frames on, the voices it gave up are still fading");
     plugin.process(256, empty, channels);
-    const uint32_t after = budget->active_voices(plugin.plugin, nullptr);
-    check(after <= 2, "one block past the limit it keeps at most two voices");
-    check(afterCut > 0, "it fades the voices it gives up: the block still carries them");
+    check(budget->active_voices(plugin.plugin, nullptr) <= 2, "a block later it keeps at most two voices");
     holdNotes(10);
     check(budget->active_voices(plugin.plugin, nullptr) <= 2, "and stays within it while playing on");
 
@@ -76,5 +74,25 @@ int main(int argc, char** argv)
     for(uint32_t b = 0; b < 40; ++b) plugin.process(256, empty, channels);
     check(budget->active_voices(plugin.plugin, nullptr) == 0, "released voices end and stop being counted");
     check(plugin.process(256, empty, channels) == CLAP_PROCESS_SLEEP, "an idle instance reports sleep");
+
+    // honors_volume: a note's volume expression at 0 silences it, and its loudness says so.
+    EventList start;
+    clap_event_note_t n;
+    noteEvent(n, 0, CLAP_EVENT_NOTE_ON, 50, 0, 70);
+    start.add(n);
+    plugin.process(256, start, channels);
+    EventList mute;
+    clap_event_note_expression_t e{};
+    e.header = {sizeof(e), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_EXPRESSION, 0};
+    e.expression_id = CLAP_NOTE_EXPRESSION_VOLUME;
+    e.note_id = 50;
+    e.port_index = e.channel = e.key = -1;
+    e.value = 0;
+    mute.add(e);
+    plugin.process(256, mute, channels);
+    double peak = 0;
+    for(uint32_t f = 0; f < 256; ++f) peak = std::max(peak, double(std::abs(out[0][f])));
+    check(peak == 0, "volume 0 silences the note");
+    check(budget->notes(plugin.plugin, notes, 16) == 1 && notes[0].loudness == 0, "and its reported loudness is 0");
     return finish("oscairn-example-voice-budget");
 }
