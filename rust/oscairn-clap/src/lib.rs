@@ -199,7 +199,7 @@ pub mod voice_budget {
     };
 
     /// One context's settings as the host sent them.
-    #[derive(Debug, Clone, Copy)]
+    #[derive(Debug, Clone, Copy, Default)]
     pub struct Context {
         pub context: u32,
         /// Voices it may keep; 0 for no limit of its own.
@@ -212,42 +212,34 @@ pub mod voice_budget {
         pub legato: bool,
     }
 
+    const MAX_CONTEXTS: usize = OSCAIRN_VOICE_BUDGET_MAX_CONTEXTS as usize;
+
     /// What `set_limits` gave the plugin, copied for the audio thread (the host's array is only
-    /// valid during the call). An instrument without sound contexts reads [`Context::selected`].
+    /// valid during the call); fixed-size, so copying never allocates. An instrument without
+    /// sound contexts reads `of(0, true)`.
     #[derive(Debug, Clone, Default)]
     pub struct Limits {
         /// Instance limit: keep at most this many voices (0: as many as the pool holds).
         pub limit: u32,
-        contexts: Vec<Context>,
+        contexts: [Context; MAX_CONTEXTS],
+        count: usize,
     }
 
     impl Limits {
-        /// Copy what the host passed at `set_limits` (its slice borrows a buffer it may reuse).
+        /// Copy what the host passed at `set_limits`, at most `OSCAIRN_VOICE_BUDGET_MAX_CONTEXTS`.
         pub fn set(&mut self, limit: u32, contexts: &[Context]) {
             self.limit = limit;
-            self.contexts.clear();
-            self.contexts.extend(contexts.iter().copied());
+            self.count = contexts.len().min(MAX_CONTEXTS);
+            self.contexts[..self.count].copy_from_slice(&contexts[..self.count]);
         }
 
-        /// The settings for one sound context, falling back to the entry for
-        /// `OSCAIRN_VOICE_BUDGET_SELECTED` when `selected` (the context a MIDI channel picks),
-        /// else to no settings.
+        /// A context's settings: its own entry; else, for one a MIDI channel selects, the entry
+        /// for `OSCAIRN_VOICE_BUDGET_SELECTED`; else none. As voice-budget-plugin.hpp's.
         pub fn of(&self, context: u32, selected: bool) -> Context {
-            if let Some(c) = self.contexts.iter().copied().find(|c| c.context == context) {
-                return c;
-            }
-            if selected {
-                return self.of_selected();
-            }
-            Context { context, limit: 0, reserve: 0, priority: 0, mono: false, legato: false }
-        }
-
-        fn of_selected(&self) -> Context {
-            self.contexts
-                .iter()
-                .copied()
-                .find(|c| c.context == OSCAIRN_VOICE_BUDGET_SELECTED)
-                .unwrap_or(Context { context: OSCAIRN_VOICE_BUDGET_SELECTED, limit: 0, reserve: 0, priority: 0, mono: false, legato: false })
+            let contexts = &self.contexts[..self.count];
+            let own = contexts.iter().find(|c| c.context == context && context != OSCAIRN_VOICE_BUDGET_SELECTED);
+            let shared = || contexts.iter().rfind(|c| c.context == OSCAIRN_VOICE_BUDGET_SELECTED).filter(|_| selected);
+            own.or_else(shared).copied().unwrap_or(Context { context, ..Context::default() })
         }
     }
 
@@ -296,26 +288,22 @@ pub mod voice_budget {
         count: u32,
     ) {
         let me = unsafe { plugin_at::<P>(plugin) };
-        // Safety: the host passes `count` (at most OSCAIRN_VOICE_BUDGET_MAX_CONTEXTS) valid
-        // entries, or null with 0. Copy them: the array is reused after the call.
-        let copied: Vec<Context> = if contexts.is_null() {
-            Vec::new()
-        } else {
-            let n = (count as usize).min(OSCAIRN_VOICE_BUDGET_MAX_CONTEXTS as usize);
-            // Safety: `contexts` points to at least `n` initialized entries, per the contract.
-            unsafe { std::slice::from_raw_parts(contexts, n) }
-                .iter()
-                .map(|c| Context {
-                    context: c.context,
-                    limit: c.limit,
-                    reserve: c.reserve,
-                    priority: c.priority,
-                    mono: c.flags as u32 & OSCAIRN_VOICE_BUDGET_MONO != 0,
-                    legato: c.flags as u32 & OSCAIRN_VOICE_BUDGET_LEGATO != 0,
-                })
-                .collect()
-        };
-        me.set_limits(limit, &copied);
+        // Copied to the stack: this runs on the audio thread, and the host reuses its array.
+        let mut copied = [Context::default(); MAX_CONTEXTS];
+        let n = if contexts.is_null() { 0 } else { (count as usize).min(MAX_CONTEXTS) };
+        // Safety: the host passes `count` valid entries, or null with 0.
+        let from = if n == 0 { &[][..] } else { unsafe { std::slice::from_raw_parts(contexts, n) } };
+        for (to, c) in copied.iter_mut().zip(from) {
+            *to = Context {
+                context: c.context,
+                limit: c.limit,
+                reserve: c.reserve,
+                priority: c.priority,
+                mono: u32::from(c.flags) & OSCAIRN_VOICE_BUDGET_MONO != 0,
+                legato: u32::from(c.flags) & OSCAIRN_VOICE_BUDGET_LEGATO != 0,
+            };
+        }
+        me.set_limits(limit, &copied[..n]);
     }
 
     #[doc(hidden)]
