@@ -76,9 +76,11 @@ int main(int argc, char** argv)
     check(ext->create(first.plugin, &first.host.host) == nullptr, "create refuses past the capacity");
     check(ext->resources(first.plugin, &resources) && resources.prepared == 8, "resources count them all");
 
-    // Destroying a context cuts its tail and frees a slot again.
-    for(auto* c : more) { c->deactivate(c); c->destroy(c); }
+    // Destroying a context frees its slot again. The extra contexts were never initialized or
+    // activated, so they are only destroyed.
+    for(auto* c : more) c->destroy(c);
     check(ext->resources(first.plugin, &resources) && resources.prepared == 2, "destroyed contexts free their slots");
+    second->stop_processing(second);
     second->deactivate(second);
     second->destroy(second);
     return finish("oscairn-example-effect-contexts");

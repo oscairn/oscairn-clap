@@ -133,14 +133,14 @@ struct MiniHost
         if(!ref->sha256[0]) std::strcpy(ref->sha256, "0000000000000000000000000000000000000000000000000000000000000000");
         return n > 0 && uint32_t(n) < capacity;
     }
+    // `owner` is the table's source: here always the clap_host_t (assets.h).
     static bool libraryRoot(const void* owner, const char* library, const char*, char* path, uint32_t capacity)
     {
         if(!owner || !library) return false;
-        auto& self = *static_cast<MiniHost*>(const_cast<MiniHost*>(static_cast<const MiniHost*>(owner)));
-        const int n = std::snprintf(path, capacity, "%s/%s", self.assetRoot.c_str(), library);
+        const int n = std::snprintf(path, capacity, "%s/%s", self(static_cast<const clap_host_t*>(owner)).assetRoot.c_str(), library);
         return n > 0 && uint32_t(n) < capacity;
     }
-    static bool create(const clap_host_t* h, const char* file, oscairn_asset_ref_t* ref, char* message, uint32_t messageCapacity)
+    static bool create(const clap_host_t*, const char* file, oscairn_asset_ref_t* ref, char* message, uint32_t messageCapacity)
     {
         if(!file || !file[0])
         {
@@ -148,9 +148,9 @@ struct MiniHost
             return false;
         }
         std::snprintf(ref->library, sizeof ref->library, "user");
-        std::snprintf(ref->path, sizeof ref->path, "examples/%s", std::strrchr(file, '/') ? file + 1 : file);
+        const char* slash = std::strrchr(file, '/');
+        std::snprintf(ref->path, sizeof ref->path, "examples/%s", slash ? slash + 1 : file);
         std::strcpy(ref->sha256, "0000000000000000000000000000000000000000000000000000000000000000");
-        (void)h;
         return true;
     }
 };
@@ -163,6 +163,7 @@ struct Plugin
     const clap_plugin_factory_t* factory = nullptr;
     const clap_plugin_t* plugin = nullptr;
     MiniHost host;
+    bool active = false;
 
     Plugin(const char* path, const char* id)
     {
@@ -171,9 +172,11 @@ struct Plugin
         if(!handle) std::exit(1);
         entry = static_cast<const clap_plugin_entry_t*>(dlsym(handle, "clap_entry"));
         check(entry && clap_version_is_compatible(entry->clap_version), "the entry is a compatible CLAP entry");
-        check(entry && entry->init(path), "the entry initializes");
+        if(!entry) std::exit(1);
+        check(entry->init(path), "the entry initializes");
         factory = static_cast<const clap_plugin_factory_t*>(entry->get_factory(CLAP_PLUGIN_FACTORY_ID));
         check(factory != nullptr, "the factory is offered");
+        if(!factory) std::exit(1);
         plugin = factory->create_plugin(factory, &host.host, id);
         check(plugin != nullptr, "the plugin is created");
         if(!plugin) std::exit(1);
@@ -181,6 +184,7 @@ struct Plugin
     }
     ~Plugin()
     {
+        deactivate();
         plugin->destroy(plugin);
         entry->deinit();
         dlclose(handle);
@@ -192,7 +196,16 @@ struct Plugin
     }
     bool activate(double rate = 48000, uint32_t block = 256)
     {
-        return plugin->activate(plugin, rate, block, block) && plugin->start_processing(plugin);
+        active = plugin->activate(plugin, rate, block, block);
+        return active && plugin->start_processing(plugin);
+    }
+    // CLAP's order: stop processing, then deactivate; the destructor does it when still active.
+    void deactivate()
+    {
+        if(!active) return;
+        plugin->stop_processing(plugin);
+        plugin->deactivate(plugin);
+        active = false;
     }
     // One process() call with `frames` frames, `events` pending and stereo channels.
     clap_process_status process(uint32_t frames, EventList& events, float* const* outChannels = nullptr, const float* const* inChannels = nullptr)
