@@ -58,7 +58,7 @@ int main(int argc, char** argv)
 
     // The cue: channel 0 selects the incoming sound and a new note starts on it. The old sound
     // is selected by no channel now — it retires — and with a ring-out buffer its main output
-    // goes to ring channels 0 and 1 instead of the main port, while the new note plays on main.
+    // goes to the ring-out channels instead of the main port, while the new note plays on main.
     check(sounds->select(plugin.plugin, selected[0], 0), "the cue selects the incoming sound");
     check(snaps->choke_retiring(plugin.plugin), "choke_retiring accepts its request");
     EventList cue;

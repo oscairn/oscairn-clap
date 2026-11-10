@@ -143,8 +143,8 @@ namespace
             const double hz = s.rateHz, depth = s.depth;
             for(uint32_t i = 0; i < block->frames_count; ++i)
             {
-                // Lane 0 the slow sine (MODULATE: an amount around where the target is),
-                // lane 1 its quadrature partner as a position (SET: 0..1 over the range).
+                // Lane 0 a sine at Rate, scaled by Depth (MODULATE: an amount around where the target
+                // is); lane 1 a sine four times as fast as a position (SET: 0..1 over the range).
                 const double slow = std::sin(2 * M_PI * s.phase[0]);
                 const double fast = .5 + .5 * std::sin(2 * M_PI * s.phase[1]);
                 if(s.canSend && block->out_events)

@@ -67,26 +67,14 @@ int main(int argc, char** argv)
     check(quietPeak > 1e-4 && quietPeak < loudPeak / 4, "channel 1 plays the quiet one beside it");
 
     // The info reports the selections.
-    uint32_t slot = 0;
-    for(; slot < 4; ++slot)
-    {
-        oscairn_sound_context_info_t i{};
-        if(sounds->get(plugin.plugin, slot, &i) && i.id == loudId) break;
-    }
-    check(slot < 4 && (info = oscairn_sound_context_info_t{}, sounds->get(plugin.plugin, slot, &info), info.selected_channels == 1),
-          "the loud sound reports channel 0 selected");
+    bool loudOnChannel0 = false;
+    for(uint32_t slot = 0; slot < 4; ++slot)
+        if(sounds->get(plugin.plugin, slot, &info) && info.id == loudId) loudOnChannel0 = info.selected_channels == 1;
+    check(loudOnChannel0, "the loud sound reports channel 0 selected");
 
-    // End the note, then discard: once idle it goes, and its ID is never reused.
+    // Once its notes have ended (playOne released them), discard: an idle sound goes, and its ID
+    // is never reused.
     for(uint32_t b = 0; b < 20; ++b) { EventList in; plugin.process(256, in, channels); }
-    {
-        EventList stops;
-        clap_event_note_t n;
-        noteEvent(n, 0, CLAP_EVENT_NOTE_OFF, 1, 0, 60);
-        noteEvent(n, 8, CLAP_EVENT_NOTE_OFF, 2, 1, 60);
-        stops.add(n);
-        plugin.process(256, stops, channels);
-    }
-    for(uint32_t b = 0; b < 100; ++b) { EventList in; plugin.process(256, in, channels); }
     // A channel keeps selecting it until a selection replaces it, so select the Default first.
     check(sounds->select(plugin.plugin, 0, -1), "selecting the Default everywhere is accepted");
     plugin.process(256, drain, channels);
@@ -104,7 +92,7 @@ int main(int argc, char** argv)
     InStream input{saved.data, 0};
     check(sounds->state->load(plugin.plugin, &input.stream), "the snapshot loads");
     bool restoredSelection = false;
-    for(slot = 0; slot < 4; ++slot)
+    for(uint32_t slot = 0; slot < 4; ++slot)
     {
         oscairn_sound_context_info_t i{};
         if(sounds->get(plugin.plugin, slot, &i) && (i.selected_channels & 8)) restoredSelection = true;
