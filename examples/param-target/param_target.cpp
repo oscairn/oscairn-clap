@@ -19,6 +19,7 @@
 namespace
 {
     constexpr uint32_t laneCount = 2;
+    constexpr double maxRate = 8; // Hz
     const char* const laneNames[] = {"Slow", "Fast"};
 
     const char* const features[] = {CLAP_PLUGIN_FEATURE_NOTE_EFFECT, CLAP_PLUGIN_FEATURE_UTILITY, nullptr};
@@ -45,7 +46,7 @@ namespace
             *out = {};
             out->id = i + 1;
             out->flags = CLAP_PARAM_IS_AUTOMATABLE;
-            out->max_value = i ? 1 : 8;
+            out->max_value = i ? 1 : maxRate;
             out->default_value = 1;
             std::strcpy(out->name, i ? "Depth" : "Rate");
             return true;
@@ -68,7 +69,7 @@ namespace
             if(id < 1 || id > 2) return false;
             char* end = nullptr;
             const double parsed = std::strtod(text, &end);
-            const double maximum = id == 1 ? 8 : 1;
+            const double maximum = id == 1 ? maxRate : 1;
             if(end == text || !std::isfinite(parsed) || parsed < 0 || parsed > maximum) return false;
             *v = parsed;
             return true;
@@ -79,7 +80,7 @@ namespace
                 if(const auto* h = in->get(in, i); h->space_id == CLAP_CORE_EVENT_SPACE_ID && h->type == CLAP_EVENT_PARAM_VALUE)
                 {
                     const auto* e = reinterpret_cast<const clap_event_param_value_t*>(h);
-                    if(e->param_id == 1 && std::isfinite(e->value)) self(p).rateHz = std::clamp(e->value, 0.0, 8.0);
+                    if(e->param_id == 1 && std::isfinite(e->value)) self(p).rateHz = std::clamp(e->value, 0.0, maxRate);
                     if(e->param_id == 2 && std::isfinite(e->value)) self(p).depth = std::clamp(e->value, 0.0, 1.0);
                 }
         }};

@@ -78,7 +78,7 @@ namespace
         [](const clap_plugin_t*, clap_id id, double v, char* text, uint32_t size) -> bool
         {
             if(id < 1 || id > Count || !std::isfinite(v)) return false;
-            if(id <= 2 || id == 5) std::snprintf(text, size, "%.0f%%", v * 100);
+            if(*parameters[id - 1].unit == '%') std::snprintf(text, size, "%.0f%%", v * 100);
             else std::snprintf(text, size, "%.3f s", v);
             return true;
         },
@@ -112,10 +112,11 @@ namespace
             return true;
         },
         nullptr, // no FM algorithm view
-        // Draft 5: how long a stage takes at a value. The sustain is a level, so it has none.
+        // Draft 5: how long a stage takes at a value; its times are in seconds already. The sustain
+        // is a level, so it has none.
         [](const clap_plugin_t*, clap_id id, double value, double* seconds) -> bool
         {
-            if(id < 3 || id > Count || id == 5) return false;
+            if(id < 1 || id > Count || *parameters[id - 1].unit != 's') return false;
             *seconds = value;
             return true;
         }};

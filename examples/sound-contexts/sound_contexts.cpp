@@ -77,9 +77,9 @@ namespace
     void Synth::render(const clap_process_t* block, uint32_t from, uint32_t to)
     {
         auto& s = *this;
-        std::array<double, 4> level{}; // per context slot
-        std::array<bool, 4> copied{};
-        std::array<float* const*, 4> ring{}; // per context: its ring-out channels, or none
+        std::array<double, contextCapacity> level{}; // per context slot
+        std::array<bool, contextCapacity> copied{};
+        std::array<float* const*, contextCapacity> ring{}; // per context: its ring-out channels, or none
         for(const auto& v : voices)
             if(v.active && !copied[v.context])
             {

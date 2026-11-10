@@ -121,9 +121,9 @@ namespace
     void Synth::render(const clap_process_t* block, uint32_t from, uint32_t to)
     {
         auto& s = *this;
-        std::array<double, 4> level{}; // per context slot
-        std::array<bool, 4> copied{};
-        std::array<float* const*, 4> ring{}; // per context: its ring-out channels, or none
+        std::array<double, contextCapacity> level{}; // per context slot
+        std::array<bool, contextCapacity> copied{};
+        std::array<float* const*, contextCapacity> ring{}; // per context: its ring-out channels, or none
         for(const auto& v : voices)
             if(v.active && !copied[v.context])
             {
@@ -195,9 +195,9 @@ namespace
         for(uint32_t i = 0; i < count; ++i)
         {
             const auto& v = supplied[i];
-            const auto& definition = v.id >= 1 && v.id <= Count ? parameters[v.id - 1] : Parameter{"", -1, 0, "", false, 0, 0};
-            if(v.id < 1 || v.id > Count || !std::isfinite(v.value) || v.value < 0 || v.value > definition.maximum ||
-               (definition.stepped && v.value != std::round(v.value)))
+            const bool known = v.id >= 1 && v.id <= Count;
+            if(!known || !std::isfinite(v.value) || v.value < 0 || v.value > parameters[v.id - 1].maximum ||
+               (parameters[v.id - 1].stepped && v.value != std::round(v.value)))
             {
                 if(message && capacity) std::snprintf(message, capacity, "value %u is not a parameter of this plugin", v.id);
                 return CLAP_INVALID_ID;

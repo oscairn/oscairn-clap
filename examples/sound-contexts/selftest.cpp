@@ -42,6 +42,7 @@ int main(int argc, char** argv)
     EventList drain;
     plugin.process(64, drain, channels);
 
+    constexpr uint32_t blocksPerSecond = 48000 / 256;
     auto playOne = [&](uint32_t seconds, int16_t channel)
     {
         double peak = 0;
@@ -50,7 +51,7 @@ int main(int argc, char** argv)
         noteEvent(n, 0, CLAP_EVENT_NOTE_ON, 1, channel, 60);
         starts.add(n);
         plugin.process(256, starts, channels);
-        for(uint32_t b = 0; b < seconds * 187; ++b)
+        for(uint32_t b = 0; b < seconds * blocksPerSecond; ++b)
         {
             EventList in;
             plugin.process(256, in, channels);
