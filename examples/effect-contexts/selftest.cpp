@@ -45,14 +45,10 @@ int main(int argc, char** argv)
     setGain(second, 1);
     EventList idle;
     first.process(256, idle, output, input);
-    double firstPeak = 0;
-    for(uint32_t f = 0; f < 256; ++f) firstPeak = std::max(firstPeak, double(std::abs(out[0][f])));
-    check(firstPeak == 0, "the first context passes silence at gain 0");
+    check(peak(out[0], 256) == 0, "the first context passes silence at gain 0");
     for(auto& c : out) std::fill(std::begin(c), std::end(c), 0.f);
     processStereo(second, 256, idle, output, input);
-    double secondPeak = 0;
-    for(uint32_t f = 0; f < 256; ++f) secondPeak = std::max(secondPeak, double(std::abs(out[0][f])));
-    check(std::abs(secondPeak - .5) < 1e-6, "the second amplifies at its own gain");
+    check(std::abs(peak(out[0], 256) - .5) < 1e-6, "the second amplifies at its own gain");
     check(ext->resources(second, &resources) && resources.tail_active, "a context that just passed signal reports a tail");
     for(auto& c : in) std::fill(std::begin(c), std::end(c), 0.f);
     processStereo(second, 256, idle, output, input);

@@ -18,6 +18,7 @@
 #include <dlfcn.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -237,6 +238,14 @@ struct Plugin
         return processStereo(plugin, frames, events, outChannels, inChannels);
     }
 };
+
+// The largest magnitude among `frames` samples of one channel.
+inline double peak(const float* channel, uint32_t frames)
+{
+    double p = 0;
+    for(uint32_t f = 0; f < frames; ++f) p = std::max(p, double(std::abs(channel[f])));
+    return p;
+}
 
 inline void noteEvent(clap_event_note_t& n, uint32_t time, uint16_t type, int32_t id, int16_t channel, int16_t key, double velocity = .8)
 {

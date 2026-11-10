@@ -45,7 +45,7 @@ int main(int argc, char** argv)
     constexpr uint32_t blocksPerSecond = 48000 / 256;
     auto playOne = [&](uint32_t seconds, int16_t channel)
     {
-        double peak = 0;
+        double loudest = 0;
         EventList starts;
         clap_event_note_t n;
         noteEvent(n, 0, CLAP_EVENT_NOTE_ON, 1, channel, 60);
@@ -55,13 +55,13 @@ int main(int argc, char** argv)
         {
             EventList in;
             plugin.process(256, in, channels);
-            for(uint32_t f = 0; f < 256; ++f) peak = std::max(peak, double(std::abs(out[0][f])));
+            loudest = std::max(loudest, peak(out[0], 256));
         }
         EventList stops;
         noteEvent(n, 0, CLAP_EVENT_NOTE_OFF, 1, channel, 60);
         stops.add(n);
         plugin.process(256, stops, channels);
-        return peak;
+        return loudest;
     };
     const double loudPeak = playOne(1, 0), quietPeak = playOne(1, 1);
     check(loudPeak > .1, "channel 0 plays the loud sound");

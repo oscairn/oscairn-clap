@@ -90,9 +90,7 @@ int main(int argc, char** argv)
     e.value = 0;
     mute.add(e);
     plugin.process(256, mute, channels);
-    double peak = 0;
-    for(uint32_t f = 0; f < 256; ++f) peak = std::max(peak, double(std::abs(out[0][f])));
-    check(peak == 0, "volume 0 silences the note");
+    check(peak(out[0], 256) == 0, "volume 0 silences the note");
     check(budget->notes(plugin.plugin, notes, 16) == 1 && notes[0].loudness == 0, "and its reported loudness is 0");
     return finish("oscairn-example-voice-budget");
 }

@@ -5,6 +5,8 @@
 // flags/range/role, and that a sound on bus 2 renders on port 2 and not on the main port.
 #include "../mini-host.hpp"
 
+#include <array>
+
 namespace
 {
     constexpr uint32_t ports = 4;

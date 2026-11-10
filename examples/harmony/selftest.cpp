@@ -25,9 +25,7 @@ int main(int argc, char** argv)
         float out[2][256]{};
         float* channels[2]{out[0], out[1]};
         const auto status = plugin.process(256, events, channels);
-        double peak = 0;
-        for(uint32_t f = 0; f < 256; ++f) peak = std::max(peak, double(std::abs(out[0][f])));
-        return std::pair{status, peak};
+        return std::pair{status, peak(out[0], 256)};
     };
     // C major, C-E-G held: keys 60, 64, 67.
     oscairn_harmony_t cMajor{};

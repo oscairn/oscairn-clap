@@ -37,8 +37,7 @@ int main(int argc, char** argv)
     check(plugin.activate(), "activates and starts processing");
     float out[2][256]{};
     float* channels[2]{out[0], out[1]};
-    auto peak = [&] { double p = 0; for(uint32_t f = 0; f < 256; ++f) p = std::max(p, double(std::abs(out[0][f]))); return p; };
-    auto render = [&](uint32_t blocks) { double p = 0; for(uint32_t b = 0; b < blocks; ++b) { EventList in; plugin.process(256, in, channels); p = std::max(p, peak()); } return p; };
+    auto render = [&](uint32_t blocks) { double p = 0; for(uint32_t b = 0; b < blocks; ++b) { EventList in; plugin.process(256, in, channels); p = std::max(p, peak(out[0], 256)); } return p; };
     EventList starts;
     clap_event_note_t n;
     noteEvent(n, 0, CLAP_EVENT_NOTE_ON, 1, 0, 60);
