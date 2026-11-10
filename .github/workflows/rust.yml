@@ -12,7 +12,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.95.0
       - name: Install libclang (bindgen)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libclang-dev
@@ -27,7 +27,5 @@ jobs:
             mkdir -p target/ui-hints.clap/Contents/MacOS
             cp target/release/libui_hints.dylib target/ui-hints.clap/Contents/MacOS/ui-hints
           else
-            cp target/release/libui_hints.so target/ui-hints.clap.so
+            cp target/release/libui_hints.so target/ui-hints.clap
           fi
-        env:
-          RUNNER_OS: ${{ runner.os }}
