@@ -53,7 +53,10 @@ int main(int argc, char** argv)
     double secondPeak = 0;
     for(uint32_t f = 0; f < 256; ++f) secondPeak = std::max(secondPeak, double(std::abs(out[0][f])));
     check(std::abs(secondPeak - .5) < 1e-6, "the second amplifies at its own gain");
-    check(ext->resources(second, &resources) && resources.tail_active, "a context that passed signal reports its tail");
+    check(ext->resources(second, &resources) && resources.tail_active, "a context that just passed signal reports a tail");
+    for(auto& c : in) std::fill(std::begin(c), std::end(c), 0.f);
+    processStereo(second, 256, idle, output, input);
+    check(ext->resources(second, &resources) && !resources.tail_active, "after a silent block it has none: a gain keeps nothing");
 
     // Fill the engine: capacity 8 including the originating context.
     std::vector<const clap_plugin_t*> more;

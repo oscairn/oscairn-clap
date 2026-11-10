@@ -29,8 +29,7 @@ namespace
     struct Engine
     {
         double sampleRate = 48000;
-        uint32_t contexts = 0;
-        std::atomic<uint64_t> sharedBytes{4096}; // the engine's own tables, counted once
+        uint32_t contexts = 0; // main thread only: create, destroy and resources
     };
 
     struct Context
@@ -38,9 +37,9 @@ namespace
         clap_plugin_t api{};
         std::shared_ptr<Engine> engine;
         std::atomic<double> gain{gainInitial};
-        std::atomic<bool> tail{false}; // true while it has passed anything through
-        explicit Context(std::shared_ptr<Engine> e) : engine(std::move(e)) { if(engine) ++engine->contexts; }
-        ~Context() { if(engine) --engine->contexts; }
+        std::atomic<bool> tail{false}; // its last block was not silent; a gain has no tail beyond that
+        explicit Context(std::shared_ptr<Engine> e) : engine(std::move(e)) { ++engine->contexts; }
+        ~Context() { --engine->contexts; }
     };
     Context& self(const clap_plugin_t* p) { return *static_cast<Context*>(p->plugin_data); }
 
@@ -135,23 +134,23 @@ namespace
             return true;
         }};
 
-    const clap_plugin_t* create(std::shared_ptr<Engine> engine = {});
+    const clap_plugin_t* create(std::shared_ptr<Engine> engine);
 
     // The extension: create makes a new uninitialized context of the same engine; resources
-    // reports the engine's shared bytes (identical for every node, so a host counts them once)
-    // and this context's own, with the tail state.
+    // reports the engine's bytes (identical for every node, so a host counts them once) and this
+    // context's own, with the tail state.
     const oscairn_plugin_effect_contexts_t contexts{
         [](const clap_plugin_t* p, const clap_host_t*) -> const clap_plugin_t*
         {
             auto engine = self(p).engine;
-            if(!engine || engine->contexts >= capacity) return nullptr; // refuse past the capacity
+            if(engine->contexts >= capacity) return nullptr; // refuse past the capacity
             return create(std::move(engine));
         },
         [](const clap_plugin_t* p, oscairn_effect_resources_t* out) -> bool
         {
             const auto& s = self(p);
-            if(!out || !s.engine) return false;
-            *out = {s.engine->sharedBytes.load(), sizeof(Context) + 4096, capacity, s.engine->contexts, s.tail.load()};
+            if(!out) return false;
+            *out = {sizeof(Engine), sizeof(Context), capacity, s.engine->contexts, s.tail.load()};
             return true;
         }};
 
@@ -166,15 +165,10 @@ namespace
         p.activate = [](const clap_plugin_t* pl, double rate, uint32_t, uint32_t)
         {
             if(!std::isfinite(rate) || rate < 1) return false;
-            auto& s = self(pl);
-            if(!s.engine || s.engine->sampleRate != rate)
-            {
-                if(s.engine && s.engine->contexts > 1) return false; // a live engine keeps its rate
-                auto fresh = std::make_shared<Engine>();
-                fresh->sampleRate = rate;
-                fresh->contexts = s.engine ? s.engine->contexts : 0;
-                s.engine = std::move(fresh);
-            }
+            auto& engine = *self(pl).engine;
+            if(engine.sampleRate == rate) return true;
+            if(engine.contexts > 1) return false; // contexts share their engine's rate
+            engine.sampleRate = rate;
             return true;
         };
         p.deactivate = [](const clap_plugin_t*) {};
@@ -187,8 +181,8 @@ namespace
             auto& s = self(pl);
             if(block->audio_outputs_count < 1 || block->audio_outputs[0].channel_count < 2) return CLAP_PROCESS_ERROR;
             params.flush(pl, block->in_events, block->out_events);
-            for(uint32_t i = 0; i < block->in_events->size(block->in_events); ++i) applyGain(s, block->in_events->get(block->in_events, i));
             const double gain = s.gain;
+            bool sounding = false;
             const bool input = block->audio_inputs_count > 0 && block->audio_inputs[0].channel_count >= 2;
             for(uint32_t c = 0; c < 2; ++c)
             {
@@ -198,9 +192,10 @@ namespace
                 {
                     const auto value = float((in ? in[f] : 0.f) * gain);
                     out[f] = value;
-                    if(value != 0) s.tail = true;
+                    sounding |= value != 0;
                 }
             }
+            s.tail = sounding;
             return CLAP_PROCESS_CONTINUE;
         };
         p.get_extension = [](const clap_plugin_t*, const char* id) -> const void*
