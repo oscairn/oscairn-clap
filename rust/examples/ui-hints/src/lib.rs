@@ -435,10 +435,7 @@ extern "C" fn get_extension(_p: *const clap_plugin, id: *const c_char) -> *const
         &NOTE_PORTS as *const _ as *const c_void
     } else if core(CLAP_EXT_STATE) {
         &STATE as *const _ as *const c_void
-    } else if [ids::OSCAIRN_EXT_UI, ids::OSCAIRN_EXT_UI_DRAFT_4, ids::OSCAIRN_EXT_UI_DRAFT_3]
-        .iter()
-        .any(|e| id.to_bytes() == e.as_bytes())
-    {
+    } else if [ids::OSCAIRN_EXT_UI, ids::OSCAIRN_EXT_UI_DRAFT_4, ids::OSCAIRN_EXT_UI_DRAFT_3].contains(&id) {
         &UI_TABLE as *const _ as *const c_void
     } else {
         std::ptr::null()

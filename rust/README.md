@@ -16,9 +16,8 @@ plus one example plugin. MIT, like the rest of this repository.
 oscairn-clap = { path = "rust/oscairn-clap" }   # or a git dependency on this repository
 ```
 
-`oscairn-clap-sys` builds its bindings with bindgen and runs a small C program at build time,
-so a C compiler and libclang are required wherever you build (a normal Rust plugin toolchain
-already has both).
+`oscairn-clap-sys` builds its bindings with bindgen at build time, so libclang is required
+wherever you build.
 
 ## What is wrapped, what is raw only
 
@@ -31,24 +30,23 @@ Wrapped (`oscairn-clap`):
 - `oscairn.voice-budget` — implement `voice_budget::VoiceBudget` and `voice_budget_table!`;
   `Limits` copies the host's `set_limits` entry and answers `of(context, selected)` with the
   `OSCAIRN_VOICE_BUDGET_SELECTED` fallback the header prescribes.
-- Extension and event-space ID constants: `oscairn_clap::ids` (checked against the headers by
-  a test).
+- Extension and event-space ID constants: `oscairn_clap::ids`, a `&CStr` for each ID string
+  in the headers, generated from the bindings.
 
 Raw only (`oscairn-clap-sys`): everything else — sound contexts and snapshots, assets and
-asset-dependencies, memory, effect contexts, param-target, beat, harmony — as generated
-structs, tables and constants. Implement their tables directly if you need them.
+asset-dependencies, memory, effect contexts, param-target, beat, harmony, hardware — as
+generated structs, tables and constants. Implement their tables directly if you need them.
 
 ## Building the bindings
 
-`oscairn-clap-sys`'s build script runs bindgen over the repository's own
-`include/oscairn-clap/*.h` (the C headers; not the `.hpp` SDK helpers) against the CLAP
-**1.2.10** headers vendored at [`clap-headers/`](clap-headers/) — the version Oscairn pins.
-(`clap-sys` 0.5.0 ships CLAP 1.2.2 types, which lack, among others, `clap_plugin_state` as
-sound-contexts uses it; so bindings are generated from the pinned headers, and a test asserts
-the shared CLAP types agree with `clap-sys`, which the wrapper's own types embed.) Every size,
-alignment and field offset is double-checked against a C program compiled from the same
-headers (`oscairn-clap-sys/layout/layout_gen.c`), and the extension ID strings against the
-headers' `static const char[]`.
+`oscairn-clap-sys`'s build script runs bindgen over every `*.h` in the repository's own
+`include/oscairn-clap/` (the C headers; not the `.hpp` SDK helpers), so a new header is bound
+without an edit here, against the CLAP **1.2.10** headers vendored at
+[`clap-headers/`](clap-headers/) — the version Oscairn pins. bindgen needs C headers to
+parse, and `clap-sys` ships only Rust, so the CLAP types the extensions use are generated
+too; a test checks they agree with `clap-sys`'s. bindgen's layout tests assert every
+struct's size, alignment and field offsets against clang's layout at compile time, and a test
+fails if any header's declarations are missing from the bindings.
 
 ## Building the example
 
@@ -73,8 +71,8 @@ in raw CLAP.
 
 ## Testing
 
-- `cargo test` — the bindings' layout tests (every struct's size, alignment and field offsets
-  against the C compiler's own numbers, IDs and enum values against the headers), the
+- `cargo test` — the bindings' tests (every header bound, IDs and enum values against the
+  headers, the CLAP types against `clap-sys`), the
   wrapper's round-trip tests (the tables' entry points driven through the C ABI), and a smoke
   test that walks the example through the CLAP entry point to a sounding block.
 - `oscairn-plugin-check` — run locally against the built bundle (CI does not have it); see
