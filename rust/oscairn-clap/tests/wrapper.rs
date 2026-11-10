@@ -7,17 +7,14 @@ use oscairn_clap::ui::{ParamHint, Role, UiHints, Widget};
 use oscairn_clap::voice_budget::{Context, Limits, Note, VoiceBudget};
 use std::cell::{Cell, RefCell};
 
-struct MyPlugin {
-    hints_on: Cell<bool>,
-    last_hint: RefCell<Option<ParamHint>>,
-}
+struct MyPlugin;
 
 impl UiHints for MyPlugin {
     fn param_hint(&self, param_id: u32) -> Option<ParamHint> {
-        if !self.hints_on.get() || param_id > 2 {
+        if param_id > 2 {
             return None;
         }
-        let h = if param_id == 1 {
+        Some(if param_id == 1 {
             ParamHint { widget: Widget::Knob, priority: 3, range_high: None, group: 2, role: Role::OSCAIRN_ROLE_CUTOFF, view: 0, field: 0, index: 0 }
         } else {
             // A range low end naming its high end, and part of an envelope view.
@@ -31,9 +28,7 @@ impl UiHints for MyPlugin {
                 field: oscairn_clap::ui::Field::OSCAIRN_FIELD_ATTACK,
                 index: 2,
             }
-        };
-        *self.last_hint.borrow_mut() = Some(h);
-        Some(h)
+        })
     }
 
     fn seconds(&self, param_id: u32, value: f64) -> Option<f64> {
@@ -52,7 +47,7 @@ fn fake_plugin(p: &MyPlugin) -> oscairn_clap_sys::clap_plugin_t {
 
 #[test]
 fn ui_table_round_trips_hints_through_the_c_abi() {
-    let me = MyPlugin { hints_on: Cell::new(true), last_hint: RefCell::new(None) };
+    let me = MyPlugin;
     let table = oscairn_clap::ui_table!(MyPlugin);
     let plugin = fake_plugin(&me);
 
@@ -148,13 +143,14 @@ fn voice_budget_table_round_trips_the_limits_and_report() {
     assert_eq!(unsafe { (table.active_voices.unwrap())(&plugin, &mut cost) }, 3);
     assert_eq!(cost, 12.5);
 
-    let mut notes = [unsafe { std::mem::zeroed::<oscairn_clap_sys::oscairn_voice_budget_note_t>() }; 3];
+    let mut notes = [oscairn_clap_sys::oscairn_voice_budget_note_t::default(); 10];
     let n = unsafe { (table.notes.unwrap())(&plugin, notes.as_mut_ptr(), 3) };
     assert_eq!(n, 3, "capped at capacity");
     assert_eq!(notes[0].note_id, 0);
     assert_eq!(notes[2].key, 62);
     assert_eq!(notes[1].voices, 2);
     assert_eq!(notes[0].loudness, 0.5);
+    assert_eq!(notes[3].voices, 0, "nothing written past capacity");
     let n = unsafe { (table.notes.unwrap())(&plugin, notes.as_mut_ptr(), 10) };
     assert_eq!(n, 5, "all five with room");
 }
