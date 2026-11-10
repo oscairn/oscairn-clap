@@ -1,0 +1,33 @@
+name: rust
+on:
+  push:
+    paths: ["rust/**", "include/**", ".github/workflows/rust.yml"]
+  pull_request:
+    paths: ["rust/**", "include/**", ".github/workflows/rust.yml"]
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install libclang (bindgen)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev
+      - name: cargo test
+        working-directory: rust
+        run: cargo test --workspace
+      - name: Build the example bundle
+        working-directory: rust
+        run: |
+          cargo build --release -p ui-hints
+          if [ "$RUNNER_OS" = macOS ]; then
+            mkdir -p target/ui-hints.clap/Contents/MacOS
+            cp target/release/libui_hints.dylib target/ui-hints.clap/Contents/MacOS/ui-hints
+          else
+            cp target/release/libui_hints.so target/ui-hints.clap.so
+          fi
+        env:
+          RUNNER_OS: ${{ runner.os }}

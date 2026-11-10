@@ -1,0 +1,15 @@
+[package]
+name = "oscairn-clap-sys"
+description = "Raw FFI bindings for the Oscairn CLAP extension headers, generated with bindgen"
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+repository.workspace = true
+links = "oscairn-clap-headers"
+
+[dependencies]
+clap-sys = "=0.5.0"
+
+[build-dependencies]
+bindgen = "=0.73.2"
+cc = "=1.2.30"

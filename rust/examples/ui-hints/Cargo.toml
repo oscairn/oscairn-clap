@@ -1,0 +1,17 @@
+[package]
+name = "ui-hints"
+description = "Minimal CLAP sine instrument with oscairn.ui parameter hints, built on oscairn-clap"
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+oscairn-clap = { path = "../../oscairn-clap", version = "=0.1.0" }
+clap-sys = "=0.5.0"
+
+[dev-dependencies]
+oscairn-clap-sys = { path = "../../oscairn-clap-sys", version = "=0.1.0" }
