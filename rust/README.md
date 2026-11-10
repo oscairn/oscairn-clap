@@ -52,9 +52,11 @@ fails if any header's declarations are missing from the bindings.
 
 ```sh
 cargo build --release -p ui-hints
-mkdir -p target/ui-hints.clap/Contents/MacOS            # macOS bundle; on Linux the plain
-cp target/release/libui_hints.dylib \                   # .so is a valid .clap on its own:
-   target/ui-hints.clap/Contents/MacOS/ui-hints         # cp target/release/libui_hints.so ui-hints.clap
+# macOS: a .clap is a bundle.
+mkdir -p target/ui-hints.clap/Contents/MacOS
+cp target/release/libui_hints.dylib target/ui-hints.clap/Contents/MacOS/ui-hints
+# Linux: the shared library itself is the .clap.
+cp target/release/libui_hints.so target/ui-hints.clap
 ```
 
 Then check it with Oscairn's checker:
@@ -75,8 +77,9 @@ in raw CLAP.
   headers, the CLAP types against `clap-sys`), the
   wrapper's round-trip tests (the tables' entry points driven through the C ABI), and a smoke
   test that walks the example through the CLAP entry point to a sounding block.
-- `oscairn-plugin-check` — run locally against the built bundle (CI does not have it); see
-  [RESULTS.md](RESULTS.md) for the last recorded run.
+- `oscairn-plugin-check` — run locally against the built bundle; CI does not have it.
+  `oscairn.voice-budget` is covered by the wrapper's tests only: the example does not
+  implement it (a sine has one voice).
 
 ## License
 
