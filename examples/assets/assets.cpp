@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 //
-// oscairn.assets + oscairn.asset-dependencies: a gain whose curve comes from a wavetable file
+// oscairn.assets + oscairn.asset-dependencies: a waveshaper whose curve comes from a file
 // in a sound library. The state holds an asset reference — a library id, a path inside it and
 // the file's SHA-256 — never a local path. On load the host's resolve gives a real file for it;
 // the reference is listed in oscairn.asset-dependencies so a Performance records it as a
@@ -12,6 +12,7 @@
 #include <oscairn-clap/assets.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <cstdio>
@@ -21,6 +22,7 @@
 
 namespace
 {
+    constexpr size_t curvePoints = 8; // the curve: a gain per eighth of the input's magnitude
     const char* const features[] = {CLAP_PLUGIN_FEATURE_AUDIO_EFFECT, CLAP_PLUGIN_FEATURE_DISTORTION, CLAP_PLUGIN_FEATURE_STEREO, nullptr};
     const clap_plugin_descriptor_t descriptor{
         CLAP_VERSION_INIT, "org.oscairn.example.assets", "Oscairn Example Assets", "Oscairn", "", "", "", "0.1.0",
@@ -31,16 +33,20 @@ namespace
         clap_plugin_t api{};
         const clap_host_t* host = nullptr;
         std::atomic<double> amount{.5};
-        oscairn_asset_ref_t curve{}; // its wavetable, as a reference; empty: the built-in curve
-        double table[8]{};
-        Plugin() { for(int i = 0; i < 8; ++i) table[i] = 1.0 / (1 + i); } // the fallback shape
+        oscairn_asset_ref_t curve{}; // its curve file, as a reference; empty: the built-in curve
+        // Written on the main thread at state load while audio may run: one atomic per point, so a
+        // block may mix two curves' points but never reads a torn one.
+        std::array<std::atomic<double>, curvePoints> table{};
+        Plugin() { useFallback(); }
+        void useFallback() { for(size_t i = 0; i < curvePoints; ++i) table[i] = 1.0 / double(1 + i); }
     };
     Plugin& self(const clap_plugin_t* p) { return *static_cast<Plugin*>(p->plugin_data); }
 
-    // Ask the host for the file. On success read its first eight doubles as the curve; a host
+    // Ask the host for the file. On success read its first curvePoints doubles as the curve; a host
     // without the extension, or a library that is not installed, leaves the fallback in place.
     void resolveCurve(Plugin& s)
     {
+        s.useFallback();
         if(!s.curve.library[0] || !s.curve.path[0]) return;
         const auto* assets = static_cast<const oscairn_host_assets_t*>(s.host->get_extension(s.host, OSCAIRN_EXT_ASSETS));
         if(!assets || !assets->resolve) return;
@@ -50,11 +56,9 @@ namespace
         s.curve = ref; // keep the hash the host verified, so dependencies report it
         if(FILE* file = std::fopen(path, "rb"))
         {
-            double read[8]{};
+            double read[curvePoints]{};
             if(std::fread(read, sizeof read, 1, file) == 1)
-            {
-                for(int i = 0; i < 8; ++i) s.table[i] = read[i];
-            }
+                for(size_t i = 0; i < curvePoints; ++i) s.table[i] = read[i];
             std::fclose(file);
         }
     }
@@ -205,7 +209,7 @@ namespace
                 {
                     const double dry = in ? in[f] : 0.0;
                     // Wave-shape with the curve: index it by the signal's magnitude.
-                    const size_t slot = std::min(size_t(7), size_t(std::abs(dry) * 8));
+                    const size_t slot = std::min(curvePoints - 1, size_t(std::abs(dry) * curvePoints));
                     const double shaped = dry * (1 + s.table[slot] * amount);
                     out[f] = float(dry * (1 - amount) + std::tanh(shaped) * amount);
                 }
