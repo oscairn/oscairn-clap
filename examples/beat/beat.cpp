@@ -2,8 +2,9 @@
 //
 // oscairn.beat: a beat position that keeps running while the transport is stopped, the same for
 // every plugin in a block, so plugins keep time and start together. Ask for the event space
-// through CLAP's event registry and an oscairn_event_beat arrives at sample 0 of every block;
-// between blocks the position moves on at the event's tempo. Here it gates a sine on the beat.
+// through CLAP's event registry and an oscairn_event_beat arrives at sample 0 of every block; in
+// the later process calls of a block the host splits, the position moves on at the event's
+// tempo. Here it clicks on every beat.
 // See docs/rfcs/0032-arpeggiator.md and core/engine/tests/follower_fixture.cpp.
 #include <clap/clap.h>
 #include <oscairn-clap/beat.h>
@@ -26,7 +27,7 @@ namespace
         clap_plugin_t api{};
         const clap_host_t* host = nullptr;
         uint16_t beatSpace = UINT16_MAX;
-        double rate = 48000, beat = -1, perSample = 0, tempo = 120; // beat < 0 until the first event
+        double rate = 48000, beat = -1, perSample = 0; // beat < 0 until the first event
         std::atomic<double> level{.5};
         double phase = 0;
     };
@@ -102,12 +103,13 @@ namespace
             return true;
         }};
 
-    // Its state is the last beat it saw: a host restoring a Performance restores the phase.
+    // Its state is the Level parameter. Never the beat: the host's position is not the plugin's
+    // to keep, and its origin means nothing (beat.h).
     const clap_plugin_state_t state{
         [](const clap_plugin_t* p, const clap_ostream_t* stream) -> bool
         {
             char data[128];
-            const int n = std::snprintf(data, sizeof data, "oscairn-example-beat-1 %.17g %.17g %.17g\n", self(p).beat, self(p).tempo, self(p).level.load());
+            const int n = std::snprintf(data, sizeof data, "oscairn-example-beat-2 %.17g\n", self(p).level.load());
             return n > 0 && stream->write(stream, data, uint64_t(n)) == n;
         },
         [](const clap_plugin_t* p, const clap_istream_t* stream) -> bool
@@ -123,13 +125,10 @@ namespace
                 data[n++] = byte;
             }
             char header[32]{};
-            double beat = -1, tempo = 0, level = -1;
-            if(std::sscanf(data, "%31s %lf %lf %lf", header, &beat, &tempo, &level) != 4 || std::strcmp(header, "oscairn-example-beat-1")) return false;
-            auto& s = self(p);
-            s.beat = beat;
-            s.tempo = tempo;
-            s.perSample = tempo / 60 / s.rate;
-            s.level = level; // the saved state carries the parameter too: reopening keeps the edit
+            double level = -1;
+            if(std::sscanf(data, "%31s %lf", header, &level) != 2 || std::strcmp(header, "oscairn-example-beat-2") || !(level >= 0 && level <= 1))
+                return false;
+            self(p).level = level;
             return true;
         }};
 
@@ -179,9 +178,7 @@ namespace
                     }
                     if(h->space_id != s.beatSpace || h->type != OSCAIRN_EVENT_BEAT) continue;
                     const auto& e = *reinterpret_cast<const oscairn_event_beat_t*>(h);
-                    // The position never goes back (beat.h): take the host's reading only ahead.
-                    s.beat = std::max(s.beat, double(e.beats) / CLAP_BEATTIME_FACTOR);
-                    s.tempo = e.tempo;
+                    s.beat = double(e.beats) / CLAP_BEATTIME_FACTOR; // the host's reading wins
                     s.perSample = e.tempo / 60 / s.rate; // and from here, on our own
                 }
                 float out = 0;
