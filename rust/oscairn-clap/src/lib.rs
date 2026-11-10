@@ -12,6 +12,17 @@
 
 pub use oscairn_clap_sys::ids;
 
+use oscairn_clap_sys::clap_plugin_t;
+
+/// The plugin behind a `clap_plugin_t` the host hands back.
+///
+/// Safety: `plugin` is a live `clap_plugin_t` this plugin created, and its `plugin_data`
+/// points at a live `P` (the contract of the table macros).
+unsafe fn plugin_at<'a, P>(plugin: *const clap_plugin_t) -> &'a P {
+    // The one cast: plugin_data is set to `*mut P` by the plugin's own constructor.
+    unsafe { &*(*plugin).plugin_data.cast::<P>() }
+}
+
 /// Types the exported table macros name in expanded plugin code.
 #[doc(hidden)]
 pub mod reexport {
@@ -20,6 +31,7 @@ pub mod reexport {
 
 /// `oscairn.ui`: how each parameter is best shown and played.
 pub mod ui {
+    use crate::plugin_at;
     use oscairn_clap_sys::{clap_plugin_t, oscairn_fm_algorithm_t, oscairn_param_hint_t, oscairn_widget};
 
     /// The control a parameter asks for (`enum oscairn_widget`).
@@ -101,24 +113,17 @@ pub mod ui {
         }
     }
 
-    /// The plugin behind a `clap_plugin_t` the host hands back.
-    ///
-    /// Safety: `plugin` is a live `clap_plugin_t` this plugin created, and its `plugin_data`
-    /// points at a live `P` (the contract of [`table`]).
-    unsafe fn plugin_at<'a, P>(plugin: *const clap_plugin_t) -> &'a P {
-        // The one cast: plugin_data is set to `*mut P` by the plugin's own constructor.
-        unsafe { &*(*plugin).plugin_data.cast::<P>() }
-    }
+    // The trampolines are public only for `ui_table!`. Safety, for each: `plugin` is as
+    // `plugin_at` needs, and the out pointer is writable, as the header's contract says.
 
-    pub extern "C" fn trampoline_param_hint<P: UiHints>(
+    #[doc(hidden)]
+    pub unsafe extern "C" fn trampoline_param_hint<P: UiHints>(
         plugin: *const clap_plugin_t,
         param_id: u32,
         hint: *mut oscairn_param_hint_t,
     ) -> bool {
-        // Safety: the host calls this with the plugin pointer it was given and a writable hint.
         let me = unsafe { plugin_at::<P>(plugin) };
         let Some(h) = me.param_hint(param_id) else { return false };
-        // Safety: `hint` is a valid writable pointer, per the callback contract.
         unsafe {
             *hint = oscairn_param_hint_t {
                 widget: h.widget as u32,
@@ -134,7 +139,8 @@ pub mod ui {
         true
     }
 
-    pub extern "C" fn trampoline_algorithm<P: UiHints>(
+    #[doc(hidden)]
+    pub unsafe extern "C" fn trampoline_algorithm<P: UiHints>(
         plugin: *const clap_plugin_t,
         param_id: u32,
         value: u32,
@@ -153,7 +159,8 @@ pub mod ui {
         true
     }
 
-    pub extern "C" fn trampoline_seconds<P: UiHints>(
+    #[doc(hidden)]
+    pub unsafe extern "C" fn trampoline_seconds<P: UiHints>(
         plugin: *const clap_plugin_t,
         param_id: u32,
         value: f64,
@@ -185,6 +192,7 @@ pub mod ui {
 
 /// `oscairn.voice-budget`: the host's voice limits, and the plugin's voice and note reports.
 pub mod voice_budget {
+    use crate::plugin_at;
     use oscairn_clap_sys::{
         clap_plugin_t, oscairn_voice_budget_context_t, oscairn_voice_budget_note_t, OSCAIRN_VOICE_BUDGET_LEGATO, OSCAIRN_VOICE_BUDGET_MAX_CONTEXTS,
         OSCAIRN_VOICE_BUDGET_MONO, OSCAIRN_VOICE_BUDGET_SELECTED,
@@ -272,17 +280,16 @@ pub mod voice_budget {
         fn notes(&self, emit: &mut dyn FnMut(&Note) -> bool);
     }
 
-    /// The plugin behind a `clap_plugin_t`; safety as in [`crate::ui`]'s cast.
-    unsafe fn plugin_at<'a, P>(plugin: *const clap_plugin_t) -> &'a P {
-        unsafe { &*(*plugin).plugin_data.cast::<P>() }
-    }
+    // The trampolines are public only for `voice_budget_table!`. Safety, for each: `plugin` is
+    // as `plugin_at` needs, and the pointers are as the header's contract says.
 
-    pub extern "C" fn trampoline_honors_volume<P: VoiceBudget>(plugin: *const clap_plugin_t) -> bool {
-        // Safety: live plugin, plugin_data a live P; main-thread call.
+    #[doc(hidden)]
+    pub unsafe extern "C" fn trampoline_honors_volume<P: VoiceBudget>(plugin: *const clap_plugin_t) -> bool {
         unsafe { plugin_at::<P>(plugin) }.honors_volume()
     }
 
-    pub extern "C" fn trampoline_set_limits<P: VoiceBudget>(
+    #[doc(hidden)]
+    pub unsafe extern "C" fn trampoline_set_limits<P: VoiceBudget>(
         plugin: *const clap_plugin_t,
         limit: u32,
         contexts: *const oscairn_voice_budget_context_t,
@@ -311,16 +318,17 @@ pub mod voice_budget {
         me.set_limits(limit, &copied);
     }
 
-    pub extern "C" fn trampoline_active_voices<P: VoiceBudget>(plugin: *const clap_plugin_t, voice_cost: *mut f64) -> u32 {
+    #[doc(hidden)]
+    pub unsafe extern "C" fn trampoline_active_voices<P: VoiceBudget>(plugin: *const clap_plugin_t, voice_cost: *mut f64) -> u32 {
         let me = unsafe { plugin_at::<P>(plugin) };
-        // Safety: the host always passes a writable double.
         let mut cost = 0.0f64;
         let n = me.active_voices(&mut cost);
         unsafe { *voice_cost = cost };
         n
     }
 
-    pub extern "C" fn trampoline_notes<P: VoiceBudget>(
+    #[doc(hidden)]
+    pub unsafe extern "C" fn trampoline_notes<P: VoiceBudget>(
         plugin: *const clap_plugin_t,
         notes: *mut oscairn_voice_budget_note_t,
         capacity: u32,
