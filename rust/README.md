@@ -60,7 +60,7 @@ cp target/release/libui_hints.dylib \                   # .so is a valid .clap o
 Then check it with Oscairn's checker:
 
 ```sh
-oscairn-plugin-check target/ui-hints.clap com.oscairn.examples.ui-hints synth
+oscairn-plugin-check target/ui-hints.clap org.oscairn.example.ui-hints synth
 ```
 
 The example uses raw CLAP through `clap-sys` rather than `clack` or `nih-plug`: the host needs

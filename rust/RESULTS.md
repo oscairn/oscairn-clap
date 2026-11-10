@@ -38,7 +38,7 @@ warning-free.
 **Passed (exit 0, `PASSED`).**
 
 ```
-oscairn-plugin-check target/ui-hints.clap com.oscairn.examples.ui-hints synth
+oscairn-plugin-check target/ui-hints.clap org.oscairn.example.ui-hints synth
 ```
 
 All 15 checks ok: loads only system libraries and its own bundle; loads in a part; plays

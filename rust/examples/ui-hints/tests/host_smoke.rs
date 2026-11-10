@@ -65,7 +65,7 @@ fn plugin_makes_sound_and_answers_ui_hints() {
         let factory = (clap_entry.get_factory.unwrap())(CLAP_PLUGIN_FACTORY_ID.as_ptr()).cast::<clap_plugin_factory>();
         assert!(!factory.is_null());
         assert_eq!(((*factory).get_plugin_count.unwrap())(factory), 1);
-        let id = c"com.oscairn.examples.ui-hints";
+        let id = c"org.oscairn.example.ui-hints";
         let plugin = ((*factory).create_plugin.unwrap())(factory, std::ptr::null(), id.as_ptr()) as *mut clap_plugin;
         assert!(!plugin.is_null());
 

@@ -27,7 +27,7 @@ use std::cell::Cell;
 use std::ffi::{c_char, c_void, CStr};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-const PLUGIN_ID: &CStr = c"com.oscairn.examples.ui-hints";
+const PLUGIN_ID: &CStr = c"org.oscairn.example.ui-hints";
 const PLUGIN_NAME: &CStr = c"Oscairn UI Hints";
 const PLUGIN_VENDOR: &CStr = c"Oscairn";
 const PLUGIN_URL: &CStr = c"https://github.com/oscairn/oscairn-clap";
