@@ -155,6 +155,33 @@ struct MiniHost
     }
 };
 
+// One process() call with `frames` frames and `events` pending, on any number of ports.
+inline clap_process_status processBlock(const clap_plugin_t* plugin, uint32_t frames, EventList& events, const clap_audio_buffer_t* outputs,
+                                        uint32_t outputCount, const clap_audio_buffer_t* inputs = nullptr, uint32_t inputCount = 0)
+{
+    clap_process_t p{};
+    p.frames_count = frames;
+    p.audio_inputs = inputs;
+    p.audio_outputs = const_cast<clap_audio_buffer_t*>(outputs);
+    p.audio_inputs_count = inputCount;
+    p.audio_outputs_count = outputCount;
+    p.in_events = &events.input;
+    p.out_events = &events.output;
+    return plugin->process(plugin, &p);
+}
+
+// The same with one stereo output port and, optionally, one stereo input port.
+inline clap_process_status processStereo(const clap_plugin_t* plugin, uint32_t frames, EventList& events, float* const* outChannels = nullptr,
+                                         const float* const* inChannels = nullptr)
+{
+    clap_audio_buffer_t out{}, in{};
+    out.channel_count = 2;
+    out.data32 = const_cast<float**>(outChannels);
+    in.channel_count = 2;
+    in.data32 = const_cast<float**>(inChannels);
+    return processBlock(plugin, frames, events, &out, outChannels ? 1 : 0, &in, inChannels ? 1 : 0);
+}
+
 // One loaded plugin: the entry, its factory and one created instance.
 struct Plugin
 {
@@ -207,23 +234,9 @@ struct Plugin
         plugin->deactivate(plugin);
         active = false;
     }
-    // One process() call with `frames` frames, `events` pending and stereo channels.
     clap_process_status process(uint32_t frames, EventList& events, float* const* outChannels = nullptr, const float* const* inChannels = nullptr)
     {
-        clap_audio_buffer_t out{}, in{};
-        out.channel_count = outChannels ? 2 : 0;
-        out.data32 = const_cast<float**>(outChannels);
-        in.channel_count = inChannels ? 2 : 0;
-        in.data32 = const_cast<float**>(inChannels);
-        clap_process_t p{};
-        p.frames_count = frames;
-        p.audio_inputs = &in;
-        p.audio_outputs = &out;
-        p.audio_inputs_count = inChannels ? 1 : 0;
-        p.audio_outputs_count = outChannels ? 1 : 0;
-        p.in_events = &events.input;
-        p.out_events = &events.output;
-        return plugin->process(plugin, &p);
+        return processStereo(plugin, frames, events, outChannels, inChannels);
     }
 };
 

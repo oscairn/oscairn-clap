@@ -9,8 +9,7 @@ namespace
 {
     constexpr uint32_t ports = 4;
 
-    // The plugin has four stereo output ports; mini-host's process() drives one, so the bus
-    // checks build their own clap_process_t with all of them.
+    // The plugin's four stereo output ports, each two channels of one block.
     struct Ports
     {
         std::array<std::array<float, 256>, ports * 2> frames{};
@@ -40,13 +39,7 @@ namespace
             buffers[p].channel_count = 2;
             buffers[p].data32 = &out.channels[p * 2];
         }
-        clap_process_t process{};
-        process.frames_count = frames;
-        process.audio_outputs = buffers;
-        process.audio_outputs_count = ports;
-        process.in_events = &events.input;
-        process.out_events = &events.output;
-        plugin.plugin->process(plugin.plugin, &process);
+        processBlock(plugin.plugin, frames, events, buffers, ports);
     }
 
     void holdNote(EventList& events, uint32_t time, int16_t channel, int16_t key)
