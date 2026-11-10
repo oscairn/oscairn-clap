@@ -122,7 +122,6 @@ dependencies = [
 name = "oscairn-clap"
 version = "0.1.0"
 dependencies = [
- "clap-sys",
  "oscairn-clap-sys",
 ]
 
