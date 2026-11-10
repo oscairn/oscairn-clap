@@ -2,12 +2,7 @@
 //! `ui-hints`: a minimal mono sine instrument in raw CLAP (`clap-sys` + the `oscairn-clap`
 //! wrapper; no clack or nih-plug, see rust/README.md). It declares its six parameters through
 //! `oscairn.ui`: cutoff and level on the Filter/Levels role banks, and an ADSR drawn as a rich
-//! envelope view with `seconds` times.
-//!
-//! Build as a `.clap` bundle:
-//!   cargo build --release -p ui-hints
-//!   mkdir -p target/ui-hints.clap/Contents/MacOS
-//!   cp target/release/libui_hints.dylib target/ui-hints.clap/Contents/MacOS/ui-hints
+//! envelope view with `seconds` times. rust/README.md says how to build it as a `.clap`.
 
 use clap_sys::entry::clap_plugin_entry;
 use clap_sys::events::{
@@ -48,6 +43,9 @@ const P_SUSTAIN: u32 = 5;
 const P_RELEASE: u32 = 6;
 const PARAM_COUNT: u32 = 6;
 
+/// The envelope's parameters are drawn joined (group 1) and as one rich view (view 1).
+const ENVELOPE: u32 = 1;
+
 /// (min, max, default) per parameter ID; the envelope times are plain seconds.
 fn param_range(id: u32) -> (f64, f64, f64) {
     match id {
@@ -78,13 +76,13 @@ impl UiHints for UiHintsPlugin {
         let (priority, role, group, field) = match param_id {
             P_CUTOFF => (1, Role::OSCAIRN_ROLE_CUTOFF, 0, Field::OSCAIRN_FIELD_NONE),
             P_LEVEL => (2, Role::OSCAIRN_ROLE_LEVEL, 0, Field::OSCAIRN_FIELD_NONE),
-            P_ATTACK => (0, Role::OSCAIRN_ROLE_ATTACK, 1, Field::OSCAIRN_FIELD_ATTACK),
-            P_DECAY => (0, Role::OSCAIRN_ROLE_DECAY, 1, Field::OSCAIRN_FIELD_DECAY),
-            P_SUSTAIN => (0, Role::OSCAIRN_ROLE_SUSTAIN, 1, Field::OSCAIRN_FIELD_SUSTAIN),
-            P_RELEASE => (0, Role::OSCAIRN_ROLE_RELEASE, 1, Field::OSCAIRN_FIELD_RELEASE),
+            P_ATTACK => (0, Role::OSCAIRN_ROLE_ATTACK, ENVELOPE, Field::OSCAIRN_FIELD_ATTACK),
+            P_DECAY => (0, Role::OSCAIRN_ROLE_DECAY, ENVELOPE, Field::OSCAIRN_FIELD_DECAY),
+            P_SUSTAIN => (0, Role::OSCAIRN_ROLE_SUSTAIN, ENVELOPE, Field::OSCAIRN_FIELD_SUSTAIN),
+            P_RELEASE => (0, Role::OSCAIRN_ROLE_RELEASE, ENVELOPE, Field::OSCAIRN_FIELD_RELEASE),
             _ => return None,
         };
-        // One envelope view (id 1); every parameter in a view must answer, per the extension.
+        // The group doubles as the view: the envelope's parameters are both.
         Some(ParamHint { widget: Widget::Knob, priority, range_high: None, group, role, view: group, field, index: 0 })
     }
 
@@ -163,8 +161,8 @@ extern "C" fn activate(p: *const clap_plugin, sample_rate: f64, _min: u32, _max:
     true
 }
 
-extern "C" fn start_processing(p: *const clap_plugin) -> bool {
-    !p.is_null()
+extern "C" fn start_processing(_p: *const clap_plugin) -> bool {
+    true
 }
 
 extern "C" fn reset(p: *const clap_plugin) {
