@@ -34,6 +34,7 @@ does not offer one gets the fallback listed in [the fallback matrix](docs/fallba
 | Free-running beat | `beat.h` | [beat](docs/beat.md) | [examples/beat](examples/beat/) |
 | Harmony | `harmony.h` | [harmony](docs/harmony.md) | [examples/harmony](examples/harmony/) |
 | Sound assets and asset dependencies | `assets.h` | [assets](docs/assets.md) | [examples/assets](examples/assets/) |
+| Accelerators (draft) | `hardware.h` | [hardware](docs/hardware.md) | none yet |
 
 | SDK helper | Reference |
 | --- | --- |

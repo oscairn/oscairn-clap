@@ -16,6 +16,7 @@ extension's page.
 | [`oscairn.beat`](beat.md) | A free-running beat shared by every plugin, also while the transport is stopped | CLAP's transport, which stops moving when the transport stops |
 | [`oscairn.harmony`](harmony.md) | The part's key, scale and held chord, as events and through the host extension | Only the notes that reach it; no key or scale |
 | [`oscairn.assets`](assets.md) and asset dependencies | Samples as references the host resolves, recorded in Performances, checked before opening, carried by exports; optional assets with a notice | Its own file paths in its state: nothing recorded, checked or carried |
+| [`oscairn.hardware`](hardware.md) (draft) | Its own backend for a device's DSP, FPGA, sound chip or real-time core, reserved and fed by the host, falling back to its CPU path on failure | Its CPU path, which every plugin keeps anyway |
 | [Preset discovery](preset-discovery-plugin.md) (CLAP) | Presets listed in Oscairn's sound lists and prepared as instant-switch sounds | Presets reachable only in its own window, on the desktop |
 
 ## Parts sharing one instance
