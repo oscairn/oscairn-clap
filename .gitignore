@@ -1,0 +1,4 @@
+build/
+build-*/
+_*/
+.omp-prompt.txt

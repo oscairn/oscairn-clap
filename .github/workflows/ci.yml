@@ -1,0 +1,18 @@
+name: build and self-test
+on: [push, pull_request]
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        # No OSCAIRN_PLUGIN_CHECK here: the checker is built from the Oscairn
+        # repository and is not available in CI, so the plugin-check label is excluded.
+        run: cmake -S . -B build
+      - name: Build
+        run: cmake --build build -j3
+      - name: Self-tests
+        run: ctest --test-dir build -L self-test --output-on-failure
