@@ -4,8 +4,9 @@
 // Two ways to read it: events, by asking for the event space OSCAIRN_EVENT_SPACE_HARMONY
 // through CLAP's event registry (one arrives in the first block and in every block where the
 // harmony changes, at the sample of the change); and the host extension OSCAIRN_EXT_HARMONY,
-// on the main thread, for the last one as of the last block processed. This one plays a sine
-// per key held at the part's input, and saves the host extension's reading as its state.
+// on the main thread, for the last one the host delivered. This one plays a sine per key held at
+// the part's input, and reads the host extension when it activates, so it resumes the harmony
+// the host last sent rather than waiting for the next change.
 // See docs/rfcs/0033-script-block.md and core/engine/tests/follower_fixture.cpp.
 #include <clap/clap.h>
 #include <oscairn-clap/harmony.h>
@@ -15,7 +16,6 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
-#include <string>
 
 namespace
 {
@@ -31,7 +31,7 @@ namespace
         uint16_t harmonySpace = UINT16_MAX; // the id the host's event registry returned
         double rate = 48000, phase = 0;
         std::atomic<double> level{.5};
-        oscairn_harmony_t last{};        // audio thread: the latest reading, which holds between events
+        oscairn_harmony_t last{}; // the latest reading, which holds between events: audio thread, or main while inactive
     };
     Plugin& self(const clap_plugin_t* p) { return *static_cast<Plugin*>(p->plugin_data); }
 
@@ -105,35 +105,30 @@ namespace
             return true;
         }};
 
-    // Its state is the level plus the harmony the host extension gives on the main thread —
-    // no harmony yet, and no harmony bytes are saved; the plugin resumes from events anyway.
+    // Its state is the Level parameter. Never the harmony: that is the host's, read from events.
     const clap_plugin_state_t state{
         [](const clap_plugin_t* p, const clap_ostream_t* stream) -> bool
         {
-            auto& s = self(p);
-            const std::string head = "oscairn-example-harmony-1 " + std::to_string(s.level.load()) + '\n';
-            if(stream->write(stream, head.data(), uint64_t(head.size())) != int64_t(head.size())) return false;
-            const auto* ext = static_cast<const oscairn_host_harmony_t*>(s.host->get_extension(s.host, OSCAIRN_EXT_HARMONY));
-            oscairn_harmony_t h{};
-            if(!ext || !ext->get(s.host, &h)) return true; // just the level
-            return stream->write(stream, &h, sizeof h) == int64_t(sizeof h);
+            char data[64];
+            const int n = std::snprintf(data, sizeof data, "oscairn-example-harmony-2 %.17g\n", self(p).level.load());
+            return n > 0 && stream->write(stream, data, uint64_t(n)) == n;
         },
         [](const clap_plugin_t* p, const clap_istream_t* stream) -> bool
         {
-            std::string data;
-            char chunk[128];
-            for(int64_t got; (got = stream->read(stream, chunk, sizeof chunk)) > 0;)
+            char data[64]{};
+            for(size_t n = 0;;)
             {
-                data.append(chunk, size_t(got));
-                if(data.size() > 4096) return false;
+                char byte;
+                const auto got = stream->read(stream, &byte, 1);
+                if(got < 0 || got > 1 || n == sizeof(data) - 1) return false;
+                if(!got) break;
+                data[n++] = byte;
             }
             char header[32]{};
             double level = -1;
-            int used = 0;
-            if(std::sscanf(data.c_str(), "%31s %lf%n", header, &level, &used) != 2 || std::strcmp(header, "oscairn-example-harmony-1") ||
-               level < 0 || level > 1)
+            if(std::sscanf(data, "%31s %lf", header, &level) != 2 || std::strcmp(header, "oscairn-example-harmony-2") || !(level >= 0 && level <= 1))
                 return false;
-            self(p).level = level; // reopening keeps the edit; harmony bytes, if any, resume from events
+            self(p).level = level;
             return true;
         }};
 
@@ -156,13 +151,17 @@ namespace
         p.activate = [](const clap_plugin_t* pl, double rate, uint32_t, uint32_t)
         {
             if(!std::isfinite(rate) || rate < 1) return false;
-            self(pl).rate = rate;
+            auto& s = self(pl);
+            s.rate = rate;
+            // The host sends an event only when the harmony changes: start from its last one.
+            const auto* ext = static_cast<const oscairn_host_harmony_t*>(s.host->get_extension(s.host, OSCAIRN_EXT_HARMONY));
+            if(oscairn_harmony_t h{}; ext && ext->get && ext->get(s.host, &h)) s.last = h;
             return true;
         };
         p.deactivate = [](const clap_plugin_t*) {};
         p.start_processing = [](const clap_plugin_t*) { return true; };
         p.stop_processing = [](const clap_plugin_t*) {};
-        p.reset = [](const clap_plugin_t* pl) { auto& s = self(pl); s.last = {}; };
+        p.reset = [](const clap_plugin_t*) {}; // keeps the harmony: the host resends it only when it changes
         p.on_main_thread = [](const clap_plugin_t*) {};
         p.process = [](const clap_plugin_t* pl, const clap_process_t* block) -> clap_process_status
         {
@@ -171,25 +170,23 @@ namespace
             uint32_t next = 0;
             const uint32_t count = block->in_events ? block->in_events->size(block->in_events) : 0;
             for(uint32_t i = 0; i < block->frames_count; ++i)
-                for(; next < count; ++next)
+            {
+                for(; next < count; ++next) // each change at its sample
                 {
                     const auto* h = block->in_events->get(block->in_events, next);
                     if(h->time > i) break;
                     if(h->space_id != s.harmonySpace || h->type != OSCAIRN_EVENT_HARMONY) continue;
                     s.last = reinterpret_cast<const oscairn_event_harmony_t*>(h)->harmony; // the reading holds until the next
                 }
-            const bool held = s.last.held[0] | s.last.held[1];
-            for(uint32_t i = 0; i < block->frames_count; ++i)
-            {
                 double sum = 0;
-                if(held)
+                if(s.last.held[0] | s.last.held[1])
                     for(int key = 24; key < 108; ++key) // a sine per held key
                         if(s.last.held[key / 64] >> (key % 64) & 1) sum += std::sin(s.phase * (1.0 + key / 64.0));
                 s.phase = std::fmod(s.phase + 220.0 * 2 * M_PI / s.rate, 2 * M_PI);
                 const auto out = float(sum * s.level.load() / 4);
                 block->audio_outputs[0].data32[0][i] = block->audio_outputs[0].data32[1][i] = out;
             }
-            return held ? CLAP_PROCESS_CONTINUE : CLAP_PROCESS_SLEEP;
+            return s.last.held[0] | s.last.held[1] ? CLAP_PROCESS_CONTINUE : CLAP_PROCESS_SLEEP;
         };
         p.get_extension = [](const clap_plugin_t*, const char* id) -> const void*
         {

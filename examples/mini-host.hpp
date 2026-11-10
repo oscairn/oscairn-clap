@@ -74,7 +74,6 @@ struct MiniHost
     clap_host_t host{};
     uint16_t nextSpace = 1; // the first space a plugin queries gets id 1
     oscairn_harmony_t harmony{};
-    bool hasHarmony = true;
     std::string assetRoot = "/usr/share/oscairn/library";
 
     MiniHost()
@@ -108,7 +107,6 @@ struct MiniHost
             static const oscairn_host_harmony_t harmonyExt{
                 [](const clap_host_t* h, oscairn_harmony_t* out) -> bool
                 {
-                    if(!self(h).hasHarmony) return false;
                     *out = self(h).harmony;
                     return true;
                 }};

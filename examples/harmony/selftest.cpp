@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // oscairn.harmony: feed harmony events on the queried space, check the plugin sounds while keys
-// are held and sleeps when they are not, keeps the last reading between events, and saves the
-// host extension's reading as its state.
+// are held and sleeps when they are not, and keeps the last reading between events, through a
+// reset, and (from the host extension) through a new activation.
 #include "../mini-host.hpp"
 
 int main(int argc, char** argv)
@@ -32,7 +32,7 @@ int main(int argc, char** argv)
     // C major, C-E-G held: keys 60, 64, 67.
     oscairn_harmony_t cMajor{};
     cMajor.key_root = 0;
-    cMajor.scale = 0b1010101010101; // C D E F G A B over two octaves
+    cMajor.scale = 0b101010110101; // C D E F G A B: pitch classes 0 2 4 5 7 9 11
     cMajor.chord_root = 0;
     cMajor.chord_type = OSCAIRN_CHORD_MAJOR;
     cMajor.chord_bass = 0;
@@ -45,6 +45,8 @@ int main(int argc, char** argv)
     check(awake == CLAP_PROCESS_CONTINUE && loud > .05, "the held chord sounds");
     const auto [stillHeld, stillLoud] = render(nullptr); // no new event: the reading holds
     check(stillHeld == CLAP_PROCESS_CONTINUE && stillLoud > .05, "the last harmony holds between events");
+    plugin.plugin->reset(plugin.plugin);
+    check(render(nullptr).second > .05, "and through a reset");
 
     oscairn_harmony_t released = cMajor;
     released.held[0] = released.held[1] = 0;
@@ -52,27 +54,17 @@ int main(int argc, char** argv)
     const auto [stopped, quiet] = render(&released);
     check(stopped == CLAP_PROCESS_SLEEP && quiet == 0, "when the keys let go it stops");
 
-    // Its state names the level, then the harmony the host extension reported for the last block.
-    plugin.host.harmony = cMajor; // what the host says the part's harmony was
+    // Activating again, it starts from the host extension's reading: no event comes until the
+    // harmony changes.
+    plugin.deactivate();
+    plugin.host.harmony = cMajor;
+    check(plugin.activate(), "activates again");
+    check(render(nullptr).second > .05, "it resumes the chord the host last sent");
+
+    // The state is the Level parameter alone.
     OutStream saved;
     check(state->save(plugin.plugin, &saved.stream), "the state saves");
-    const auto tail = saved.data.find('\n');
-    check(tail != std::string::npos && saved.data.compare(0, 25, "oscairn-example-harmony-1") == 0 &&
-              saved.data.size() == tail + 1 + sizeof(oscairn_harmony_t),
-          "a level line, then the host's harmony reading verbatim");
-    const auto* savedHarmony = reinterpret_cast<const oscairn_harmony_t*>(saved.data.data() + tail + 1);
-    check(savedHarmony->chord_type == OSCAIRN_CHORD_MAJOR && savedHarmony->key_root == 0,
-          "the mini host's harmony (C major) is what was saved");
     InStream back{saved.data, 0};
-    check(state->load(plugin.plugin, &back.stream), "and loads its own state");
-
-    // A host with no harmony extension: the level line still saves, and loads.
-    plugin.host.hasHarmony = false;
-    OutStream empty;
-    check(state->save(plugin.plugin, &empty.stream) && empty.data.find('\n') == empty.data.size() - 1 &&
-              empty.data.size() > 1,
-          "with no harmony to report, only the level saves");
-    InStream none{empty.data, 0};
-    check(state->load(plugin.plugin, &none.stream), "and loads that level-only state");
+    check(state->load(plugin.plugin, &back.stream), "and loads back");
     return finish("oscairn-example-harmony");
 }
