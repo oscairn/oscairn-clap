@@ -79,9 +79,9 @@ and records the list in the Performance. A table without `count` or `get` is ref
 
 When a Performance opens, a missing **required** asset stops it loading, naming the asset; a
 missing **optional** one gives a notice, and the plugin's `resolve` of it fails, so it uses its
-fallback. An exported Performance or Sound carries each recorded asset once, except a file of an
-installed asset library (packed with `oscairn-sign asset-package`), which the destination must
-have installed.
+fallback. An exported Performance or Sound carries each recorded asset once, whatever library it
+came from, an installed asset library (packed with `oscairn-sign asset-package`) included, with
+that library's license and attribution files.
 
 ## Patches with asset paths
 
@@ -92,8 +92,8 @@ to each relative path through `resolve`.
 ## Licenses of factory content
 
 Factory content packed with `oscairn-sign asset-package` under the publisher's own license
-(`LicenseRef-...`) must carry its text (`--license-file`) and stays out of users' exports unless it
-is packed with `--redistribute yes`.
+(`LicenseRef-...`) must carry its text (`--license-file`). Users' exports carry its files like any
+other library's, with that text: there is no option to keep them out.
 
 ## Without it
 
