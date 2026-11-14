@@ -2,8 +2,10 @@
 //! Raw FFI bindings for every header in the repository's `include/oscairn-clap/`, generated
 //! with bindgen (`--features generate`) into the checked-in `src/bindings.rs`, against the
 //! vendored CLAP 1.2.10 headers (`rust/clap-headers`, the version Oscairn pins). bindgen needs C headers to parse, which `clap-sys` does not
-//! ship, so the CLAP types the extensions use are generated here too; `tests/bindings.rs`
-//! checks they agree with `clap-sys`'s.
+//! ship, so the headers are only parsed: the CLAP types the extensions use are not generated
+//! but are `clap-sys`'s own (the generated code imports them from it), so a plugin passes its
+//! `clap_sys::plugin::clap_plugin` to an `oscairn_*` table without a cast. [`clap_sys`] is
+//! re-exported so a consumer gets the same version.
 //!
 //! bindgen keeps each header's ID strings as NUL-terminated byte strings (`OSCAIRN_EXT_UI`);
 //! [`ids`] has each of them as a `&CStr`, generated from those.
@@ -12,6 +14,8 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 #![allow(clippy::all)]
+
+pub use clap_sys;
 
 include!("bindings.rs");
 

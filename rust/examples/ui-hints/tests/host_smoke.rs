@@ -116,11 +116,11 @@ fn plugin_makes_sound_and_answers_ui_hints() {
         let ui = ((*plugin).get_extension.unwrap())(plugin, ui_id.as_ptr()).cast::<oscairn_clap_sys::oscairn_plugin_ui_t>();
         assert!(!ui.is_null());
         let mut hint: oscairn_clap_sys::oscairn_param_hint_t = std::mem::zeroed();
-        assert!(((*ui).param_hint.unwrap())(plugin.cast::<oscairn_clap_sys::clap_plugin_t>(), 1, &mut hint));
+        assert!(((*ui).param_hint.unwrap())(plugin, 1, &mut hint));
         assert_eq!(hint.widget, oscairn_clap_sys::oscairn_widget::OSCAIRN_WIDGET_KNOB);
         assert_eq!(hint.role, oscairn_clap_sys::oscairn_role::OSCAIRN_ROLE_CUTOFF);
         let mut seconds = -1.0;
-        assert!(((*ui).seconds.unwrap())(plugin.cast::<oscairn_clap_sys::clap_plugin_t>(), 3, 0.5, &mut seconds)); // Attack: identity
+        assert!(((*ui).seconds.unwrap())(plugin, 3, 0.5, &mut seconds)); // Attack: identity
         assert_eq!(seconds, 0.5);
 
         ((*plugin).stop_processing.unwrap())(plugin);

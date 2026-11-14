@@ -43,8 +43,11 @@ fn main() {
         .header(all_path.to_str().unwrap())
         .clang_arg(format!("-I{}", include.display()))
         .clang_arg(format!("-I{}", clap_include.display()))
-        // Everything the Oscairn headers declare, and the CLAP types they use.
+        // Everything the Oscairn headers declare. The CLAP types they use are `clap-sys`'s: bindgen
+        // is told not to emit them, and the prelude below names each one the way the headers do.
         .allowlist_file(".*/oscairn-clap/[^/]*\\.h")
+        .blocklist_type("clap_.*")
+        .raw_line(CLAP_SYS_PRELUDE)
         // A named enum's values in a module of its name; an anonymous enum's at the top.
         .constified_enum_module("oscairn_.*")
         .derive_default(true)
@@ -69,6 +72,20 @@ fn main() {
 
     std::fs::write(manifest.join("src/bindings.rs"), rust + &ids).expect("writing src/bindings.rs failed");
 }
+
+/// The CLAP items the generated code names, each at its `clap-sys` path under its C name (the
+/// headers say `clap_host_t`; `clap-sys` says `clap_host`).
+#[cfg(feature = "generate")]
+const CLAP_SYS_PRELUDE: &str = "\
+use clap_sys::audio_buffer::clap_audio_buffer as clap_audio_buffer_t;
+use clap_sys::events::clap_event_header as clap_event_header_t;
+use clap_sys::ext::state::clap_plugin_state as clap_plugin_state_t;
+use clap_sys::fixedpoint::clap_beattime;
+use clap_sys::host::clap_host as clap_host_t;
+use clap_sys::id::clap_id;
+use clap_sys::plugin::clap_plugin as clap_plugin_t;
+use clap_sys::stream::{clap_istream as clap_istream_t, clap_ostream as clap_ostream_t};
+";
 
 /// bindgen reads `#define X UINT64_MAX` as an i32 -1. The headers define no negative macro,
 /// so a negative one is an unsigned maximum. shortcut: a real negative `#define` would come out

@@ -73,16 +73,16 @@ fn enum_and_constant_values_match_the_headers() {
     assert_eq!(sys::OSCAIRN_HARDWARE_UNKNOWN_BYTES, u64::MAX);
 }
 
-/// `clap-sys` and the generated bindings must agree on the CLAP types the extensions embed,
-/// so a plugin can mix them.
+/// The generated structs use `clap-sys`'s CLAP types themselves, not copies: each field below
+/// is passed where the `clap-sys` type is expected, which only compiles if they are one type.
 #[test]
-fn clap_sys_types_agree() {
-    use std::mem::{align_of, size_of};
-    assert_eq!(size_of::<sys::clap_plugin_t>(), size_of::<clap_sys::plugin::clap_plugin>());
-    assert_eq!(align_of::<sys::clap_plugin_t>(), align_of::<clap_sys::plugin::clap_plugin>());
-    assert_eq!(size_of::<sys::clap_host_t>(), size_of::<clap_sys::host::clap_host>());
-    assert_eq!(size_of::<sys::clap_event_header_t>(), size_of::<clap_sys::events::clap_event_header>());
-    assert_eq!(size_of::<sys::clap_istream_t>(), size_of::<clap_sys::stream::clap_istream>());
-    assert_eq!(size_of::<sys::clap_ostream_t>(), size_of::<clap_sys::stream::clap_ostream>());
-    assert_eq!(size_of::<sys::clap_audio_buffer_t>(), size_of::<clap_sys::audio_buffer::clap_audio_buffer>());
+fn clap_sys_types_are_the_generated_ones() {
+    use sys::clap_sys::{host::clap_host, plugin::clap_plugin};
+    fn host(_: *const clap_host) {}
+    fn plugin(_: *const clap_plugin) {}
+    fn header(_: sys::clap_sys::events::clap_event_header) {}
+    let _ = |t: sys::oscairn_plugin_ui_t| t.param_hint.map(|f| unsafe { f(std::ptr::null::<clap_plugin>(), 0, std::ptr::null_mut()) });
+    let _ = |t: sys::oscairn_host_harmony_t| t.get.map(|f| unsafe { f(std::ptr::null::<clap_host>(), std::ptr::null_mut()) });
+    let _ = |e: sys::oscairn_event_beat_t| header(e.header);
+    let _ = (host, plugin);
 }

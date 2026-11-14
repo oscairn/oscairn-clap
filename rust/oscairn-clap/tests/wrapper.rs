@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 //! Wrapper tests: the tables' C entry points are driven the way the host drives them (through
-//! function pointers, a fake `clap_plugin_t` whose `plugin_data` points at the plugin struct),
+//! function pointers, a fake `clap_plugin` whose `plugin_data` points at the plugin struct),
 //! and the values that come back are the Rust ones.
 
 use oscairn_clap::ui::{ParamHint, Role, UiHints, Widget};
@@ -36,13 +36,16 @@ impl UiHints for MyPlugin {
     }
 }
 
-fn fake_plugin(p: &MyPlugin) -> oscairn_clap_sys::clap_plugin_t {
-    oscairn_clap_sys::clap_plugin_t {
-        desc: std::ptr::null(),
-        plugin_data: (p as *const MyPlugin).cast_mut().cast(),
-        // The other fields go unused by the tables; zero them by taking bindgen's default.
-        ..Default::default()
-    }
+/// A `clap_plugin` (`clap-sys`'s, which has no `Default`) whose `plugin_data` is `data`; the
+/// other fields go unused by the tables, so they are zero: null pointers and `None` entries.
+fn plugin_with_data(data: *mut std::ffi::c_void) -> oscairn_clap_sys::clap_sys::plugin::clap_plugin {
+    let mut plugin: oscairn_clap_sys::clap_sys::plugin::clap_plugin = unsafe { std::mem::zeroed() };
+    plugin.plugin_data = data;
+    plugin
+}
+
+fn fake_plugin(p: &MyPlugin) -> oscairn_clap_sys::clap_sys::plugin::clap_plugin {
+    plugin_with_data((p as *const MyPlugin).cast_mut().cast())
 }
 
 #[test]
@@ -112,11 +115,7 @@ impl VoiceBudget for Budget {
 fn voice_budget_table_round_trips_the_limits_and_report() {
     let me = Budget { limit: Cell::new(0), contexts: RefCell::new(Vec::new()), voices: Cell::new(3) };
     let table = oscairn_clap::voice_budget_table!(Budget);
-    let plugin = oscairn_clap_sys::clap_plugin_t {
-        desc: std::ptr::null(),
-        plugin_data: (&me as *const Budget).cast_mut().cast(),
-        ..Default::default()
-    };
+    let plugin = plugin_with_data((&me as *const Budget).cast_mut().cast());
 
     assert!(unsafe { (table.honors_volume.unwrap())(&plugin) });
 

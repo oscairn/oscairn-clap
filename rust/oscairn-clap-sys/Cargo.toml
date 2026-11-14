@@ -10,8 +10,8 @@ repository.workspace = true
 # Regenerates src/bindings.rs from the headers with bindgen (needs libclang).
 generate = ["dep:bindgen"]
 
+[dependencies]
+clap-sys = "=0.5.0"
+
 [build-dependencies]
 bindgen = { version = "=0.73.2", optional = true }
-
-[dev-dependencies]
-clap-sys = "=0.5.0"

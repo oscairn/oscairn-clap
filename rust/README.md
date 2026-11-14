@@ -19,6 +19,16 @@ oscairn-clap = { path = "rust/oscairn-clap" }   # or a git dependency on this re
 `oscairn-clap-sys` ships its bindings pre-generated (`src/bindings.rs`), so building needs no
 libclang. The `generate` feature regenerates them.
 
+The CLAP types the extensions use (`clap_plugin`, `clap_host`, `clap_event_header`, `clap_id`, ...)
+are [`clap-sys`](https://crates.io/crates/clap-sys) 0.5.0's own, not copies, so a plugin built on
+`clap-sys` hands its types to the `oscairn_*` tables without a cast. `oscairn-clap-sys`
+re-exports the crate, so a consumer gets the same version:
+
+```rust
+use oscairn_clap_sys::clap_sys::{host::clap_host, plugin::clap_plugin}; // or depend on clap-sys = "=0.5.0" directly
+use oscairn_clap_sys::oscairn_plugin_ui_t; // its `param_hint` takes `*const clap_plugin`
+```
+
 ## What is wrapped, what is raw only
 
 Wrapped (`oscairn-clap`):
@@ -53,8 +63,10 @@ CI regenerates it and fails if the file changes. With `generate`, the build scri
 bindgen over every `*.h` in the repository's own `include/oscairn-clap/` (the C headers; not the `.hpp` SDK helpers), so a new header is bound
 without an edit here, against the CLAP **1.2.10** headers vendored at
 [`clap-headers/`](clap-headers/) — the version Oscairn pins. bindgen needs C headers to
-parse, and `clap-sys` ships only Rust, so the CLAP types the extensions use are generated
-too; a test checks they agree with `clap-sys`'s. bindgen's layout tests assert every
+parse, and `clap-sys` ships only Rust, so the vendored headers stay as bindgen's include path
+only: bindgen blocklists the `clap_*` types and the generated code imports `clap-sys`'s
+instead (the `use` lines at the top of `bindings.rs`, written by `build.rs`; a test checks
+the generated structs take them). bindgen's layout tests assert every
 struct's size, alignment and field offsets against clang's layout at compile time, and a test
 fails if any header's declarations are missing from the bindings.
 
@@ -84,7 +96,7 @@ in raw CLAP.
 ## Testing
 
 - `cargo test` — the bindings' tests (every header bound, IDs and enum values against the
-  headers, the CLAP types against `clap-sys`), the
+  headers, the generated structs taking `clap-sys`'s types), the
   wrapper's round-trip tests (the tables' entry points driven through the C ABI), and a smoke
   test that walks the example through the CLAP entry point to a sounding block.
 - `oscairn-plugin-check` — run locally against the built bundle; CI does not have it.

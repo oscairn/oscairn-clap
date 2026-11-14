@@ -12,7 +12,7 @@
 
 pub use oscairn_clap_sys::ids;
 
-use oscairn_clap_sys::clap_plugin_t;
+use oscairn_clap_sys::clap_sys::plugin::clap_plugin as clap_plugin_t;
 
 /// The plugin behind a `clap_plugin_t` the host hands back.
 ///
@@ -32,7 +32,8 @@ pub mod reexport {
 /// `oscairn.ui`: how each parameter is best shown and played.
 pub mod ui {
     use crate::plugin_at;
-    use oscairn_clap_sys::{clap_plugin_t, oscairn_fm_algorithm_t, oscairn_param_hint_t, oscairn_widget};
+    use oscairn_clap_sys::clap_sys::plugin::clap_plugin as clap_plugin_t;
+    use oscairn_clap_sys::{oscairn_fm_algorithm_t, oscairn_param_hint_t, oscairn_widget};
 
     /// The control a parameter asks for (`enum oscairn_widget`).
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -193,8 +194,9 @@ pub mod ui {
 /// `oscairn.voice-budget`: the host's voice limits, and the plugin's voice and note reports.
 pub mod voice_budget {
     use crate::plugin_at;
+    use oscairn_clap_sys::clap_sys::plugin::clap_plugin as clap_plugin_t;
     use oscairn_clap_sys::{
-        clap_plugin_t, oscairn_voice_budget_context_t, oscairn_voice_budget_note_t, OSCAIRN_VOICE_BUDGET_LEGATO, OSCAIRN_VOICE_BUDGET_MAX_CONTEXTS,
+        oscairn_voice_budget_context_t, oscairn_voice_budget_note_t, OSCAIRN_VOICE_BUDGET_LEGATO, OSCAIRN_VOICE_BUDGET_MAX_CONTEXTS,
         OSCAIRN_VOICE_BUDGET_MONO, OSCAIRN_VOICE_BUDGET_SELECTED,
     };
 
