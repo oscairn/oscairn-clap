@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| IDs | Host extension `OSCAIRN_EXT_ASSETS` = `"oscairn.assets/draft-3"` (also answered: `draft-2`, `draft-1`); plugin extension `OSCAIRN_EXT_ASSET_DEPENDENCIES` = `"oscairn.asset-dependencies/draft-2"` (also read: `draft-1`) |
+| IDs | Host extension `OSCAIRN_EXT_ASSETS` = `"oscairn.assets/draft-4"` (also answered: `draft-3`, `draft-2`, `draft-1`); plugin extension `OSCAIRN_EXT_ASSET_DEPENDENCIES` = `"oscairn.asset-dependencies/draft-2"` (also read: `draft-1`) |
 | Header | [`assets.h`](../include/oscairn-clap/assets.h) |
 | Design | Oscairn [RFC 0009](https://github.com/oscairn/oscairn/blob/main/docs/rfcs/0009-sound-assets-and-dependencies.md), asset packages in [the library archive format](https://github.com/oscairn/oscairn/blob/main/docs/library-archive.md#asset-packages) |
 | Example | [`examples/assets/`](../examples/assets/) |
@@ -25,12 +25,12 @@ typedef struct oscairn_asset_ref {
 
 | Side | Implements |
 | --- | --- |
-| Host | `oscairn_host_assets_t`: `resolve`, `library_root` (draft 2), `create` (draft 3), from `clap_host.get_extension(OSCAIRN_EXT_ASSETS)`, and from a preset indexer's `get_extension` |
+| Host | `oscairn_host_assets_t`: `resolve`, `library_root` (draft 2), `create` (draft 3), `resolve_sample` (draft 4), from `clap_host.get_extension(OSCAIRN_EXT_ASSETS)`, and from a preset indexer's `get_extension` |
 | Plugin | `oscairn_plugin_asset_dependencies_t`: `count` and `get` (required), `optional` (draft 2, may be null) |
 
 ## Host functions (the plugin calls them)
 
-All are **main thread**. Called from another thread, `resolve` and `create` return false with a
+All are **main thread**. Called from another thread, `resolve`, `create` and `resolve_sample` return false with a
 reason and `library_root` returns false.
 
 ### `bool resolve(host, oscairn_asset_ref_t* ref, char* path, path_capacity, char* message, message_capacity)`
@@ -61,9 +61,24 @@ plain file name of at most 255 bytes), after which the plugin may delete its fil
 keeps `ref` in its state and lists it in `oscairn.asset-dependencies`. False with a reason on
 failure.
 
-From an indexer, `resolve` and `create` are null. Oscairn answers drafts 1, 2 and 3 with the same
-table (each draft's struct is a prefix of the next); an indexer answers drafts 2 and 3, and only when
-the scan has an asset store.
+### `bool resolve_sample(host, const oscairn_asset_ref_t* ref, char* path, path_capacity, oscairn_sample_location_t* location, char* message, message_capacity)` (draft 4)
+
+Draft 4 adds items kept by content and named by their id rather than files. A reference whose
+`path` is `sample:<id>` or `waveform:<id>` (64 lowercase hex digits; `library` empty; `sha256` empty
+or that id, which is its digest) names a sample in an Oscairn Sample Pack or a waveform
+([github.com/oscairn/samplepack](https://github.com/oscairn/samplepack)). `resolve` answers a
+waveform reference with the path of its `.owf` file, once every sample it names is installed, and a
+sample reference with its pack's path. `resolve_sample` answers a sample reference with where its
+record is: the pack's path in `path`, read-only, and in `location` (`oscairn_sample_location_t`:
+`offset`, `length`, `preload`) the record's offset, length and preload span (bytes from the
+record's start to the end of its preload window: read these first), which with the id make the
+`sp_index_entry` the samplepack library's `sp_record_*` functions take. Both stay valid while the
+plugin holds the sound prepared: packs are appended to, never rewritten. An in-memory lookup, cheap
+enough for every sample of a sound. False with a reason on failure.
+
+From an indexer, `resolve`, `create` and `resolve_sample` are null. Oscairn answers
+drafts 1 to 4 with the same table (each draft's struct is a prefix of the next); an indexer answers
+drafts 2 to 4, and only when the scan has an asset store.
 
 ## Plugin functions (the host calls them)
 
