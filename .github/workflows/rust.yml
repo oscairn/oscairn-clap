@@ -5,6 +5,23 @@ on:
   pull_request:
     paths: ["rust/**", "include/**", ".github/workflows/rust.yml"]
 jobs:
+  bindings-fresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          components: rustfmt
+      - name: Install libclang (bindgen)
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev
+      - name: Regenerate the bindings; they must not change
+        working-directory: rust
+        run: |
+          cargo build -p oscairn-clap-sys --features generate
+          git diff --exit-code -- oscairn-clap-sys/src/bindings.rs
+      - name: cargo test with generate
+        working-directory: rust
+        run: cargo test -p oscairn-clap-sys --features generate
   test:
     strategy:
       matrix:
@@ -13,9 +30,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.95.0
-      - name: Install libclang (bindgen)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libclang-dev
       - name: cargo test
         working-directory: rust
         run: cargo test --workspace

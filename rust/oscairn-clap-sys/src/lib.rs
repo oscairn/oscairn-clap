@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 //! Raw FFI bindings for every header in the repository's `include/oscairn-clap/`, generated
-//! at build time with bindgen against the vendored CLAP 1.2.10 headers (`rust/clap-headers`,
-//! the version Oscairn pins). bindgen needs C headers to parse, which `clap-sys` does not
+//! with bindgen (`--features generate`) into the checked-in `src/bindings.rs`, against the
+//! vendored CLAP 1.2.10 headers (`rust/clap-headers`, the version Oscairn pins). bindgen needs C headers to parse, which `clap-sys` does not
 //! ship, so the CLAP types the extensions use are generated here too; `tests/bindings.rs`
 //! checks they agree with `clap-sys`'s.
 //!
@@ -13,7 +13,7 @@
 #![allow(non_snake_case)]
 #![allow(clippy::all)]
 
-include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+include!("bindings.rs");
 
 /// The generated [`ids`] constants: a header's `static const char[]` as a `&CStr`.
 const fn id(bytes: &'static [u8]) -> &'static core::ffi::CStr {

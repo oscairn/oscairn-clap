@@ -5,7 +5,7 @@ plus one example plugin. MIT, like the rest of this repository.
 
 | Crate | What |
 | --- | --- |
-| [`oscairn-clap-sys`](oscairn-clap-sys/) | raw FFI bindings for every C header, generated at build time with bindgen, and the extension ID constants |
+| [`oscairn-clap-sys`](oscairn-clap-sys/) | raw FFI bindings for every C header, generated with bindgen and checked in, and the extension ID constants |
 | [`oscairn-clap`](oscairn-clap/) | thin safe wrappers: `oscairn.ui` (parameter hints and roles), `oscairn.voice-budget` (the host's limits), extension IDs |
 | [`examples/ui-hints`](examples/ui-hints/) | a sine instrument that declares its hints through the wrapper |
 
@@ -16,8 +16,8 @@ plus one example plugin. MIT, like the rest of this repository.
 oscairn-clap = { path = "rust/oscairn-clap" }   # or a git dependency on this repository
 ```
 
-`oscairn-clap-sys` builds its bindings with bindgen at build time, so libclang is required
-wherever you build.
+`oscairn-clap-sys` ships its bindings pre-generated (`src/bindings.rs`), so building needs no
+libclang. The `generate` feature regenerates them.
 
 ## What is wrapped, what is raw only
 
@@ -39,8 +39,18 @@ generated structs, tables and constants. Implement their tables directly if you 
 
 ## Building the bindings
 
-`oscairn-clap-sys`'s build script runs bindgen over every `*.h` in the repository's own
-`include/oscairn-clap/` (the C headers; not the `.hpp` SDK helpers), so a new header is bound
+`oscairn-clap-sys/src/bindings.rs` is checked in, one file for every target: macOS arm64 and
+Linux x86_64 and aarch64 generate it identically, and Windows differs only in the integer type
+of the enums' `Type` aliases (`c_int` on MSVC, unused by any struct or function), so the layout
+assertions hold there too. After any change under `include/` or `clap-headers/`, regenerate it (needs libclang; use the pinned
+rustc, as CI does, so rustfmt formats it the same):
+
+```sh
+cargo build -p oscairn-clap-sys --features generate
+```
+
+CI regenerates it and fails if the file changes. With `generate`, the build script runs
+bindgen over every `*.h` in the repository's own `include/oscairn-clap/` (the C headers; not the `.hpp` SDK helpers), so a new header is bound
 without an edit here, against the CLAP **1.2.10** headers vendored at
 [`clap-headers/`](clap-headers/) — the version Oscairn pins. bindgen needs C headers to
 parse, and `clap-sys` ships only Rust, so the CLAP types the extensions use are generated

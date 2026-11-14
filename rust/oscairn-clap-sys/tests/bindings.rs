@@ -4,7 +4,7 @@
 
 use oscairn_clap_sys as sys;
 
-const BINDINGS: &str = include_str!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+const BINDINGS: &str = include_str!("../src/bindings.rs");
 
 /// The names a header declares at file scope: its typedefs, named enums, `static const`s and
 /// `OSCAIRN_` macros. Enough of C for these headers, which keep one declaration per line.
