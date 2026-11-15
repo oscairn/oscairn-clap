@@ -66,9 +66,20 @@ sharing one instance. New native Oscairn instruments implement it, on the SDK he
 - **Presets:** a preset picked in Oscairn's sound lists becomes a sound through `prepare_preset`.
   A native instrument without it has its presets listed but refused ("Plugin cannot prepare sounds
   from presets").
-- **Selecting:** a selection wakes a sleeping plugin, so it processes the boundary. Oscairn reads
+- **Selecting:** an accepted selection wakes a sleeping plugin: the host runs `process` on the next block, so it processes the boundary. Oscairn reads
   `get` to follow which sound each channel plays, and polls `discard` on outgoing sounds until it
   succeeds, so a sound with a voice or a tail rings out: report idleness honestly.
+- **Waking:** after a block that returned `CLAP_PROCESS_SLEEP`, the host does not call `process`
+  until something comes for the plugin: audio input that is not silent, an event, or a transport
+  change. It also runs `process` on the block after an accepted `select`, a queued
+  `choke_retiring`, `request_process` or `request_flush` from the plugin, a host command (a
+  parameter set, a gesture, an event sent outside a block) or a panic, even if the last status was
+  `CLAP_PROCESS_SLEEP`. `set_limits` (voice budget) does not wake a sleeping plugin and is applied
+  on the next block that runs. A plugin that owes `CLAP_EVENT_NOTE_END`s after a state load calls
+  `request_process`. While asleep the host does not call `process`, and `steady_time` keeps
+  counting the skipped frames. A plugin in a worker may additionally not be called at all while
+  asleep with silent input; the same wake rules apply. Beat and harmony events do not wake it
+  ([beat](beat.md), [harmony](harmony.md)).
 - **Parameter events** with a channel edit the sound that channel selects; a plugin should follow
   per-channel parameter events (the SDK's Engine does).
 - **In a worker process** the same calls cross to the worker; the IDs the engine sees are mapped to

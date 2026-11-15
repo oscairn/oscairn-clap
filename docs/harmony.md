@@ -29,7 +29,9 @@ change it. Sustained keys no longer held do not count.
   Querying turns the events on. A host without the space returns false.
 - **`oscairn_event_harmony_t`**, audio thread, in `process`'s input events: in the first block the
   plugin processes, and in each block where anything in `oscairn_harmony_t` changes, at the sample
-  of the change: the sample of the note that changed the chord, before that note. The host never
+  of the change: the sample of the note that changed the chord, before that note. It does not wake
+  a plugin that returned `CLAP_PROCESS_SLEEP`; the plugin gets the current harmony with the next
+  block that does wake it. The host never
   sends one equal to the last it delivered (it sends again after an activation).
 - **`oscairn_host_harmony_t.get(host, &harmony)`**, main thread: the harmony of the last event the
   host delivered to the plugin. False before the first. So **a plugin must query the event space

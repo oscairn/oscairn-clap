@@ -66,7 +66,10 @@ first change's tail still rings, Oscairn calls it just before selecting the inco
 queued like `select`: at that process boundary, before the selections queued after it, the plugin
 chokes every context retiring then (a short fade, as a CLAP choke, no click), whose main output
 goes into channels 2 and 3 until it ends; the sounds the new selections leave take channels 0 and 1.
-False when nothing could be queued.
+False when nothing could be queued. A queued `choke_retiring` wakes a sleeping plugin: the host
+runs `process` on the next block, even if the last status was `CLAP_PROCESS_SLEEP`. The full wake
+rules are under Waking in [sound-contexts](sound-contexts.md); a plugin that owes
+`CLAP_EVENT_NOTE_END`s after a state load calls `request_process`.
 
 ### `bool save_sound(plugin, uint32_t id, const clap_ostream_t* stream)` (draft 4, optional)
 

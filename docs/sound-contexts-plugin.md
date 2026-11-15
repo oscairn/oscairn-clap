@@ -47,6 +47,13 @@ Optional, each with a default:
 | `bool mono(const Context&) const` | The sound plays one note at a time (default false) |
 | `double voiceCost() const` | Microseconds a voice costs a block (default 0, no estimate) |
 | `static constexpr bool volumeExpressions` | True when `render` multiplies by `amplitude()` (default false) |
+| `bool asleep() const` | True when the instrument makes no sound and will make none until an event arrives (default false); see below |
+
+`asleep()`: when it returns true after a block, `process` returns `CLAP_PROCESS_SLEEP`, and for a
+block with no input events while it already is, `process` clears the outputs without rendering. While
+asleep the host does not call `process` (the wake rules are under Waking in
+[sound-contexts](sound-contexts.md)), and `steady_time` keeps counting the skipped frames, so derive
+free-running phases (an LFO, a chorus) from `steady_time`, not from a count of rendered frames.
 
 ## What the Engine gives the instrument
 

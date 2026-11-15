@@ -36,7 +36,11 @@ example on the next whole beat.
     the transport has no tempo; always finite and above 0.
 
   Oscairn sends it from its graph (parts and routing; a plain engine `Chain` sends none).
-  A plugin that asked for it is processed every block, never skipped as asleep.
+  Every block that runs carries it, but it does not wake a plugin that returned
+  `CLAP_PROCESS_SLEEP`: the plugin gets the current beat with the next block that does wake it
+  (audio input, an event, or a transport change: start, stop, relocation, a tempo change with the
+  transport). A plugin that must act on beats while it holds nothing must not return
+  `CLAP_PROCESS_SLEEP` in that state.
 
   When the host splits a block into several `process` calls, only the first carries it: the
   position moves on at `tempo` from there. Count it forward yourself between events.
