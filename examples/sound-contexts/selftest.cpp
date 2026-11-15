@@ -42,6 +42,21 @@ int main(int argc, char** argv)
     EventList drain;
     plugin.process(64, drain, channels);
 
+    // Idle with no events, the plugin sleeps and its outputs are cleared; an event wakes it.
+    std::fill_n(out[0], 256, .5f); std::fill_n(out[1], 256, .5f);
+    EventList idle;
+    check(plugin.process(256, idle, channels) == CLAP_PROCESS_SLEEP && peak(out[0], 256) == 0 && peak(out[1], 256) == 0,
+          "an idle block without events returns SLEEP with zeroed outputs");
+    EventList wake;
+    clap_event_note_t wakeNote;
+    noteEvent(wakeNote, 0, CLAP_EVENT_NOTE_ON, 1, 0, 60);
+    wake.add(wakeNote);
+    check(plugin.process(256, wake, channels) == CLAP_PROCESS_CONTINUE, "a block with a note processes and continues");
+    EventList wakeOff;
+    noteEvent(wakeNote, 0, CLAP_EVENT_NOTE_OFF, 1, 0, 60);
+    wakeOff.add(wakeNote);
+    plugin.process(256, wakeOff, channels);
+
     constexpr uint32_t blocksPerSecond = 48000 / 256;
     auto playOne = [&](uint32_t seconds, int16_t channel)
     {

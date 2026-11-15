@@ -54,6 +54,7 @@ namespace
         static constexpr size_t maxStateBytes = 4096;
 
         bool accepts(const Patch&, const clap_event_note_t&) { return true; }
+        bool asleep() const { for(const auto& v : voices) if(v.active) return false; return true; }
         void start(Voice& v, Context&) { v.phase = v.level = 0; }
         void release(Voice& v) { v.held = false; }
         void render(const clap_process_t*, uint32_t from, uint32_t to);
