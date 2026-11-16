@@ -33,7 +33,8 @@ use oscairn_clap_sys::oscairn_plugin_ui_t; // its `param_hint` takes `*const cla
 
 Wrapped (`oscairn-clap`):
 
-- `oscairn.ui` — implement `ui::UiHints` (`param_hint`, `seconds`, `algorithm`) and put
+- `oscairn.ui` — implement `ui::UiHints` (`param_hint`, `seconds`, `algorithm`, and for draft 6 `tab_count`, `tab`,
+  `param_tab` behind `HAS_TABS` and `value_icon` behind `HAS_VALUE_ICONS`, null unless set) and put
   `ui_table!(YourPlugin)` in a `static`; return it from `get_extension` for
   `ids::OSCAIRN_EXT_UI` (one draft-6 table answers the draft-5, draft-4 and draft-3 IDs too, whose
   members are a prefix). `Widget`, `Role` and `Field` carry the headers' values.

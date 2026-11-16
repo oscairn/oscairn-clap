@@ -33,7 +33,7 @@ pub mod reexport {
 pub mod ui {
     use crate::plugin_at;
     use oscairn_clap_sys::clap_sys::plugin::clap_plugin as clap_plugin_t;
-    use oscairn_clap_sys::{oscairn_fm_algorithm_t, oscairn_param_hint_t, oscairn_widget};
+    use oscairn_clap_sys::{oscairn_fm_algorithm_t, oscairn_icon, oscairn_param_hint_t, oscairn_ui_tab_t, oscairn_widget};
 
     /// The control a parameter asks for (`enum oscairn_widget`).
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,6 +53,34 @@ pub mod ui {
 
     /// A parameter's place in a rich view, `enum oscairn_field` values as `Field::OSCAIRN_FIELD_*`.
     pub use oscairn_clap_sys::oscairn_field as Field;
+
+    /// An icon a stepped parameter's value may name (`enum oscairn_icon`), drawn by the host in
+    /// its own style. `None` where a function returns `Option<Icon>` is `OSCAIRN_ICON_NONE`.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[repr(u32)]
+    pub enum Icon {
+        Sine = oscairn_icon::OSCAIRN_ICON_SINE,
+        Triangle = oscairn_icon::OSCAIRN_ICON_TRIANGLE,
+        Saw = oscairn_icon::OSCAIRN_ICON_SAW,
+        SawDown = oscairn_icon::OSCAIRN_ICON_SAW_DOWN,
+        Square = oscairn_icon::OSCAIRN_ICON_SQUARE,
+        Pulse = oscairn_icon::OSCAIRN_ICON_PULSE,
+        Noise = oscairn_icon::OSCAIRN_ICON_NOISE,
+        SampleAndHold = oscairn_icon::OSCAIRN_ICON_SAMPLE_AND_HOLD,
+    }
+
+    /// One page or tab of the editor (`oscairn_ui_tab_t`). `id` is the plugin's own and must be
+    /// nonzero, unique among all the entries and stable across rescans; `parent` is 0 for a page,
+    /// else the id of a page (two levels). `name` is the display name: it is written into the
+    /// 64-byte field as UTF-8, cut on a character boundary to at most 63 bytes, and should not be
+    /// empty. The wrapper refuses only an id of 0; the host leaves out a repeated id, an empty name
+    /// and a parent that is not a page's id, as the header says.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct Tab {
+        pub id: u32,
+        pub parent: u32,
+        pub name: String,
+    }
 
     /// One parameter's hint, in Rust types. `range_high` is the high end of a `Widget::Range`;
     /// `None` for every other widget.
@@ -110,6 +138,38 @@ pub mod ui {
         /// How long the envelope stage of the time/rate parameter `param_id` takes at
         /// `value`; `None` for none.
         fn seconds(&self, _param_id: u32, _value: f64) -> Option<f64> {
+            None
+        }
+
+        /// Set to `true` when `tab_count`, `tab` and `param_tab` are implemented: `ui_table!` then
+        /// fills those three members, else they are null (a plugin written before draft 6 is
+        /// unchanged).
+        const HAS_TABS: bool = false;
+
+        /// The number of entries `tab` has, pages and tabs together; 0 declares none.
+        fn tab_count(&self) -> u32 {
+            0
+        }
+
+        /// Entry `index` of the pages and tabs, in the order the host draws them; `None` for none.
+        /// An entry with id 0 is left out.
+        fn tab(&self, _index: u32) -> Option<Tab> {
+            None
+        }
+
+        /// The id of the page or tab the parameter `param_id` is on; `None` leaves it to its
+        /// module path. Id 0 is no id.
+        fn param_tab(&self, _param_id: u32) -> Option<u32> {
+            None
+        }
+
+        /// Set to `true` when `value_icon` is implemented: `ui_table!` then fills that member,
+        /// else it is null.
+        const HAS_VALUE_ICONS: bool = false;
+
+        /// The icon of the stepped parameter `param_id` at `value`, its plain value (the number
+        /// `value_to_text` takes, which may be negative); `None` for no icon.
+        fn value_icon(&self, _param_id: u32, _value: f64) -> Option<Icon> {
             None
         }
     }
@@ -173,12 +233,60 @@ pub mod ui {
         true
     }
 
+    #[doc(hidden)]
+    pub unsafe extern "C" fn trampoline_tab_count<P: UiHints>(plugin: *const clap_plugin_t) -> u32 {
+        let me = unsafe { plugin_at::<P>(plugin) };
+        me.tab_count()
+    }
+
+    #[doc(hidden)]
+    pub unsafe extern "C" fn trampoline_tab<P: UiHints>(plugin: *const clap_plugin_t, index: u32, tab: *mut oscairn_ui_tab_t) -> bool {
+        let me = unsafe { plugin_at::<P>(plugin) };
+        let Some(t) = me.tab(index) else { return false };
+        if t.id == 0 {
+            return false;
+        }
+        let mut entry = oscairn_ui_tab_t { id: t.id, parent: t.parent, name: [0; 64] };
+        // At most 63 bytes, ending on a character boundary, then the NUL the zeros already give.
+        let mut len = t.name.len().min(63);
+        while !t.name.is_char_boundary(len) {
+            len -= 1;
+        }
+        for (dst, src) in entry.name.iter_mut().zip(&t.name.as_bytes()[..len]) {
+            *dst = *src as ::std::os::raw::c_char;
+        }
+        unsafe { *tab = entry };
+        true
+    }
+
+    #[doc(hidden)]
+    pub unsafe extern "C" fn trampoline_param_tab<P: UiHints>(plugin: *const clap_plugin_t, param_id: u32, tab_id: *mut u32) -> bool {
+        let me = unsafe { plugin_at::<P>(plugin) };
+        let Some(id) = me.param_tab(param_id).filter(|&id| id != 0) else { return false };
+        unsafe { *tab_id = id };
+        true
+    }
+
+    #[doc(hidden)]
+    pub unsafe extern "C" fn trampoline_value_icon<P: UiHints>(
+        plugin: *const clap_plugin_t,
+        param_id: u32,
+        value: f64,
+        icon: *mut u32,
+    ) -> bool {
+        let me = unsafe { plugin_at::<P>(plugin) };
+        let Some(i) = me.value_icon(param_id, value) else { return false };
+        unsafe { *icon = i as u32 };
+        true
+    }
+
     /// The `oscairn_plugin_ui_t` table for `P`: put it in a `static` and return a reference to it
     /// from `get_extension` when asked for `ids::OSCAIRN_EXT_UI` (a draft-6 table answers the
     /// older draft IDs too, whose members are a prefix).
     ///
     /// Safety contract: every `clap_plugin_t` handed to this table's functions must have
-    /// `plugin_data` pointing at a live `P`.
+    /// `plugin_data` pointing at a live `P`. The draft 6 members are null unless `P` sets
+    /// `HAS_TABS` or `HAS_VALUE_ICONS`.
     #[macro_export]
     macro_rules! ui_table {
         ($P:ty) => {
@@ -186,11 +294,10 @@ pub mod ui {
                 param_hint: Some($crate::ui::trampoline_param_hint::<$P>),
                 algorithm: Some($crate::ui::trampoline_algorithm::<$P>),
                 seconds: Some($crate::ui::trampoline_seconds::<$P>),
-                // Draft 6's pages, tabs and value icons: not wrapped yet, so declared as none.
-                tab_count: None,
-                tab: None,
-                param_tab: None,
-                value_icon: None,
+                tab_count: if <$P as $crate::ui::UiHints>::HAS_TABS { Some($crate::ui::trampoline_tab_count::<$P>) } else { None },
+                tab: if <$P as $crate::ui::UiHints>::HAS_TABS { Some($crate::ui::trampoline_tab::<$P>) } else { None },
+                param_tab: if <$P as $crate::ui::UiHints>::HAS_TABS { Some($crate::ui::trampoline_param_tab::<$P>) } else { None },
+                value_icon: if <$P as $crate::ui::UiHints>::HAS_VALUE_ICONS { Some($crate::ui::trampoline_value_icon::<$P>) } else { None },
             }
         };
     }

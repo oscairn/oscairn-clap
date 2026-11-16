@@ -3,7 +3,7 @@
 //! function pointers, a fake `clap_plugin` whose `plugin_data` points at the plugin struct),
 //! and the values that come back are the Rust ones.
 
-use oscairn_clap::ui::{ParamHint, Role, UiHints, Widget};
+use oscairn_clap::ui::{Icon, ParamHint, Role, Tab, UiHints, Widget};
 use oscairn_clap::voice_budget::{Context, Limits, Note, VoiceBudget};
 use std::cell::{Cell, RefCell};
 
@@ -81,6 +81,112 @@ fn ui_table_round_trips_hints_through_the_c_abi() {
     // An FM-less plugin answers algorithm false.
     let mut alg = oscairn_clap_sys::oscairn_fm_algorithm_t::default();
     assert!(!unsafe { (table.algorithm.unwrap())(&plugin, 2, 1, &mut alg) });
+}
+
+/// Two pages, Operators with three tabs and Pitch; names at the 63-byte limit.
+struct Tabbed;
+
+fn tabbed_entries() -> Vec<Tab> {
+    let tab = |id, parent, name: &str| Tab { id, parent, name: name.to_string() };
+    vec![
+        tab(1, 0, "Operators"),
+        tab(2, 0, "Pitch"),
+        tab(3, 1, &format!("{}\u{e9}", "a".repeat(61))), // exactly 63 bytes: kept whole
+        tab(4, 1, &format!("{}\u{e9}", "b".repeat(62))), // 64 bytes: the two-byte letter would straddle byte 63
+        tab(5, 1, "Op 3"),
+        tab(0, 1, "Refused"),
+    ]
+}
+
+impl UiHints for Tabbed {
+    fn param_hint(&self, _param_id: u32) -> Option<ParamHint> {
+        None
+    }
+    const HAS_TABS: bool = true;
+    fn tab_count(&self) -> u32 {
+        tabbed_entries().len() as u32
+    }
+    fn tab(&self, index: u32) -> Option<Tab> {
+        tabbed_entries().get(index as usize).cloned()
+    }
+    fn param_tab(&self, param_id: u32) -> Option<u32> {
+        match param_id {
+            10 => Some(3),
+            11 => Some(1), // on the page itself
+            12 => Some(0), // 0 is no id
+            _ => None,     // unplaced
+        }
+    }
+    const HAS_VALUE_ICONS: bool = true;
+    fn value_icon(&self, param_id: u32, value: f64) -> Option<Icon> {
+        match (param_id, value as i32) {
+            (20, -1) => Some(Icon::Triangle),
+            (20, 0) => Some(Icon::Sine),
+            (20, 1) => Some(Icon::SawDown),
+            (20, 2) => Some(Icon::SampleAndHold),
+            _ => None,
+        }
+    }
+}
+
+fn name_of(entry: &oscairn_clap_sys::oscairn_ui_tab_t) -> String {
+    let bytes: Vec<u8> = entry.name.iter().take_while(|&&c| c != 0).map(|&c| c as u8).collect();
+    String::from_utf8(bytes).expect("a name cut on a character boundary is UTF-8")
+}
+
+#[test]
+fn ui_table_round_trips_pages_tabs_and_icons() {
+    let me = Tabbed;
+    let table = oscairn_clap::ui_table!(Tabbed);
+    let plugin = plugin_with_data((&me as *const Tabbed).cast_mut().cast());
+    let count = unsafe { (table.tab_count.unwrap())(&plugin) };
+    assert_eq!(count, 6);
+
+    let mut entry = oscairn_clap_sys::oscairn_ui_tab_t::default();
+    let expected = tabbed_entries();
+    for (i, want) in expected.iter().enumerate().take(5) {
+        assert!(unsafe { (table.tab.unwrap())(&plugin, i as u32, &mut entry) });
+        assert_eq!((entry.id, entry.parent), (want.id, want.parent));
+        let name = name_of(&entry);
+        if i == 3 {
+            assert_eq!(name, "b".repeat(62), "cut before the character that would pass 63 bytes");
+        } else {
+            assert_eq!(name, want.name);
+        }
+        assert_eq!(entry.name[63], 0, "the terminating NUL");
+    }
+    assert_eq!(name_of(&{ unsafe { (table.tab.unwrap())(&plugin, 2, &mut entry) }; entry }).len(), 63);
+    assert!(!unsafe { (table.tab.unwrap())(&plugin, 5, &mut entry) }, "id 0 is refused");
+    assert!(!unsafe { (table.tab.unwrap())(&plugin, 6, &mut entry) }, "past the end");
+
+    let mut id = 99u32;
+    assert!(unsafe { (table.param_tab.unwrap())(&plugin, 10, &mut id) });
+    assert_eq!(id, 3);
+    assert!(unsafe { (table.param_tab.unwrap())(&plugin, 11, &mut id) });
+    assert_eq!(id, 1);
+    id = 99;
+    assert!(!unsafe { (table.param_tab.unwrap())(&plugin, 12, &mut id) }, "id 0 is no tab");
+    assert!(!unsafe { (table.param_tab.unwrap())(&plugin, 13, &mut id) }, "unplaced");
+    assert_eq!(id, 99);
+
+    let mut icon = 99u32;
+    let ask = |value: f64, icon: &mut u32| unsafe { (table.value_icon.unwrap())(&plugin, 20, value, icon) };
+    assert!(ask(-1.0, &mut icon));
+    assert_eq!(icon, Icon::Triangle as u32);
+    assert!(ask(1.0, &mut icon));
+    assert_eq!(icon, oscairn_clap_sys::oscairn_icon::OSCAIRN_ICON_SAW_DOWN);
+    assert!(ask(2.0, &mut icon));
+    assert_eq!(icon, oscairn_clap_sys::oscairn_icon::OSCAIRN_ICON_SAMPLE_AND_HOLD);
+    icon = 99;
+    assert!(!ask(3.0, &mut icon));
+    assert_eq!(icon, 99);
+}
+
+#[test]
+fn a_plugin_implementing_no_draft_6_member_has_them_null() {
+    let table = oscairn_clap::ui_table!(MyPlugin);
+    assert!(table.param_hint.is_some());
+    assert!(table.tab_count.is_none() && table.tab.is_none() && table.param_tab.is_none() && table.value_icon.is_none());
 }
 
 struct Budget {
