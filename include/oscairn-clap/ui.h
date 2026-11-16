@@ -43,7 +43,7 @@ extern "C" {
  *   zero; it holds at the end of segment n - 1 until the note ends, and segment n is its
  *   release.
  * - A key or velocity map: map fields. Each index is a zone (an element's or a layer's key
- *   and velocity range); the breakpoint, depths and curves scale a level across the keys
+ *   and velocity range, 1 to 32); the breakpoint, depths and curves scale a level across the keys
  *   (DX7's keyboard level scaling, with the curves' value texts saying their shape: "-LIN",
  *   "+EXP"); velocity depth and curve scale it by velocity. A host lays key parameters across
  *   their ranges, as their value texts name the keys.
@@ -79,7 +79,10 @@ extern "C" {
  * waveform), a draft 4 one, without seconds() (an envelope's times then come from value texts
  * with units, "31 ms" or "1.2 s", or are drawn by each parameter's range), and a draft 3 one,
  * without views. A draft 6 table is a draft 5 table with members after its last, so a plugin
- * may return it for the older IDs as well: a host reads only the members its draft has.
+ * may return it for the older IDs as well: a host reads only the members its draft has. Draft 6
+ * also lets an element's or a zone's index go to 32 (an operator's stays 1 to 8): a draft 5 host
+ * keeps a field only with an index up to 8 and ignores the others, so a view with more elements
+ * or zones shows its first eight there, and every parameter stays a tile.
  */
 static const char OSCAIRN_EXT_UI[] = "oscairn.ui/draft-6";
 static const char OSCAIRN_EXT_UI_DRAFT_5[] = "oscairn.ui/draft-5";
@@ -198,7 +201,8 @@ typedef struct oscairn_param_hint
     /* Draft 4: */
     uint32_t view;      /* nonzero: the rich view this parameter is part of, with every parameter of the same view */
     uint32_t field;     /* enum oscairn_field: its place in the view */
-    uint32_t index;     /* whose field it is, 1 to 8: an operator's, an element's or a zone's; 0: the view's own */
+    uint32_t index;     /* whose field it is: an operator's, 1 to 8; an element's or a zone's, 1 to 32 (draft 6; a draft 5
+                           host draws only 1 to 8 and ignores a field with a larger index); 0: the view's own */
 } oscairn_param_hint_t;
 
 /* One algorithm of an FM operator view: which operators modulate which, and which are heard.

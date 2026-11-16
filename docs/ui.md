@@ -169,8 +169,8 @@ the others.
 
 Every parameter with the same nonzero `view` is part of one view, wherever its module is (an FM
 view's operators may be on pages of their own). `field` (`enum oscairn_field`) is its place in the
-view, and `index` whose field it is: 1 to 8 (an operator's, an element's, a zone's), or 0 for the
-view's own (the algorithm). What a view is follows from its fields:
+view, and `index` whose field it is: an operator's, 1 to 8; an element's or a zone's, 1 to 32 (draft 6;
+before it, 1 to 8); or 0 for the view's own (the algorithm). What a view is follows from its fields:
 
 | View | Fields | Drawn |
 | --- | --- | --- |
@@ -185,7 +185,9 @@ edit. Rules:
 
 - `param_hint` must return true for **every** parameter in a view, also those with no role or
   widget (`OSCAIRN_WIDGET_AUTO`, priority 0, `CLAP_INVALID_ID`, group 0, their role or none).
-- The host keeps a field only where it knows it, with an index up to 8, and an algorithm only on a
+- The host keeps a field only where it knows it, with an index up to 8 for an operator and up to 32
+  for an element or a zone (a draft 5 host: up to 8 for all, ignoring a field with a larger index,
+  so it draws the first eight of such a view and the rest stay plain tiles), and an algorithm only on a
   stepped parameter of at most 128 values; anything else leaves its view and is a plain tile.
 - An envelope's stages are drawn by time: each segment has the same room, filled on a log scale
   (about even below 50 ms) up to the longest any of its stages can take, past a least width that
@@ -279,7 +281,7 @@ if (!strcmp(id, OSCAIRN_EXT_UI)) return &ui;
 - Over Oscairn's JSON-RPC control interface, `params.list` returns each parameter's kept hint
   (widget, priority, group, role, view, field, index, and a view's `seconds` and `algorithms`
   when the host kept them), so a test can check what the host kept
-  rather than what the plugin returned: a widget that does not fit, or a field on an index past 8,
+  rather than what the plugin returned: a widget that does not fit, or a field on an index past 8 (an operator) or 32,
   is dropped.
 - Check `param_hint` returns true for every parameter in a view, and that `seconds` (or the value
   texts) answers at every value the host asks: one miss drops all the times.

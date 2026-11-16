@@ -96,7 +96,8 @@ pub mod ui {
         /// The rich view this parameter is part of; 0 for none.
         pub view: u32,
         pub field: Field::Type,
-        /// Whose field it is, 1 to 8; 0 for the view's own.
+        /// Whose field it is: an operator's, 1 to 8; an element's or a zone's, 1 to 32 (a draft 5
+        /// host draws only 1 to 8 and ignores a larger one); 0 for the view's own. Not checked here.
         pub index: u32,
     }
 
