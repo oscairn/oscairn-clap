@@ -87,7 +87,7 @@ Pin a commit, not a branch, and move the pin on purpose.
 
 ## Drafts change
 
-Every extension is a **draft**, and its ID says so (`oscairn.ui/draft-5`). Until Oscairn's first
+Every extension is a **draft**, and its ID says so (`oscairn.ui/draft-6`). Until Oscairn's first
 public release, drafts change without notice: a new draft may add, reorder or remove members, and
 the host may stop reading an old one. Where a new draft only adds members at the end, Oscairn
 keeps answering the older IDs, and each reference page says which drafts the host still reads.
