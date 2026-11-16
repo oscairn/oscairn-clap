@@ -398,7 +398,7 @@ extern "C" fn state_load(p: *const clap_plugin, stream: *const clap_istream) -> 
     true
 }
 
-/// One draft-5 table answers all three ID strings: the host reads only the members an older
+/// One draft-6 table answers all four ID strings: the host reads only the members an older
 /// draft has, and those are a prefix of this struct.
 static UI_TABLE: oscairn_clap::reexport::oscairn_plugin_ui_t = oscairn_clap::ui_table!(UiHintsPlugin);
 
@@ -455,7 +455,7 @@ extern "C" fn get_extension(_p: *const clap_plugin, id: *const c_char) -> *const
         &NOTE_PORTS as *const _ as *const c_void
     } else if core(CLAP_EXT_STATE) {
         &STATE as *const _ as *const c_void
-    } else if [ids::OSCAIRN_EXT_UI, ids::OSCAIRN_EXT_UI_DRAFT_4, ids::OSCAIRN_EXT_UI_DRAFT_3].contains(&id) {
+    } else if [ids::OSCAIRN_EXT_UI, ids::OSCAIRN_EXT_UI_DRAFT_5, ids::OSCAIRN_EXT_UI_DRAFT_4, ids::OSCAIRN_EXT_UI_DRAFT_3].contains(&id) {
         &UI_TABLE as *const _ as *const c_void
     } else {
         std::ptr::null()

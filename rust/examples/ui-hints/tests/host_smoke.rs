@@ -112,7 +112,7 @@ fn plugin_makes_sound_and_answers_ui_hints() {
         assert!(energy > 1e-4, "the block after a note-on has sound: energy {energy}");
 
         // oscairn.ui answers with the declared role for Cutoff.
-        let ui_id = c"oscairn.ui/draft-5";
+        let ui_id = c"oscairn.ui/draft-6";
         let ui = ((*plugin).get_extension.unwrap())(plugin, ui_id.as_ptr()).cast::<oscairn_clap_sys::oscairn_plugin_ui_t>();
         assert!(!ui.is_null());
         let mut hint: oscairn_clap_sys::oscairn_param_hint_t = std::mem::zeroed();

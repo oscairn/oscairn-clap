@@ -35,7 +35,7 @@ Wrapped (`oscairn-clap`):
 
 - `oscairn.ui` — implement `ui::UiHints` (`param_hint`, `seconds`, `algorithm`) and put
   `ui_table!(YourPlugin)` in a `static`; return it from `get_extension` for
-  `ids::OSCAIRN_EXT_UI` (one draft-5 table answers the draft-4 and draft-3 IDs too, whose
+  `ids::OSCAIRN_EXT_UI` (one draft-6 table answers the draft-5, draft-4 and draft-3 IDs too, whose
   members are a prefix). `Widget`, `Role` and `Field` carry the headers' values.
 - `oscairn.voice-budget` — implement `voice_budget::VoiceBudget` and `voice_budget_table!`;
   `Limits` copies the host's `set_limits` entry and answers `of(context, selected)` with the

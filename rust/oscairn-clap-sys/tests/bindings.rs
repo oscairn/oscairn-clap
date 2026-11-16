@@ -51,7 +51,8 @@ fn every_header_is_bound() {
 
 #[test]
 fn ids_are_the_header_strings() {
-    assert_eq!(sys::ids::OSCAIRN_EXT_UI, c"oscairn.ui/draft-5");
+    assert_eq!(sys::ids::OSCAIRN_EXT_UI, c"oscairn.ui/draft-6");
+    assert_eq!(sys::ids::OSCAIRN_EXT_UI_DRAFT_5, c"oscairn.ui/draft-5");
     assert_eq!(sys::ids::OSCAIRN_EXT_HARDWARE, c"oscairn.hardware/draft");
     assert_eq!(sys::ids::OSCAIRN_EXT_HARDWARE.to_bytes_with_nul(), sys::OSCAIRN_EXT_HARDWARE);
 }
@@ -63,6 +64,7 @@ fn enum_and_constant_values_match_the_headers() {
     assert_eq!((w::OSCAIRN_WIDGET_AUTO, w::OSCAIRN_WIDGET_RANGE), (0, 6));
     assert_eq!((r::OSCAIRN_ROLE_NONE, r::OSCAIRN_ROLE_CUTOFF, r::OSCAIRN_ROLE_OUTPUT_BUS), (0, 1, 35));
     assert_eq!((f::OSCAIRN_FIELD_ATTACK, f::OSCAIRN_FIELD_LEVEL_0, f::OSCAIRN_FIELD_TIME_1, f::OSCAIRN_FIELD_FIXED), (2, 16, 32, 102));
+    assert_eq!((sys::oscairn_icon::OSCAIRN_ICON_NONE, sys::oscairn_icon::OSCAIRN_ICON_SAW_DOWN, sys::oscairn_icon::OSCAIRN_ICON_SAMPLE_AND_HOLD), (0, 4, 8));
     assert_eq!((sys::OSCAIRN_VOICE_BUDGET_MONO, sys::OSCAIRN_VOICE_BUDGET_LEGATO), (1, 2));
     assert_eq!(sys::OSCAIRN_VOICE_BUDGET_SELECTED, u32::MAX);
     assert_eq!(sys::OSCAIRN_VOICE_BUDGET_MAX_CONTEXTS, 16);

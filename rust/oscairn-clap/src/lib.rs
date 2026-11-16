@@ -174,7 +174,7 @@ pub mod ui {
     }
 
     /// The `oscairn_plugin_ui_t` table for `P`: put it in a `static` and return a reference to it
-    /// from `get_extension` when asked for `ids::OSCAIRN_EXT_UI` (a draft-5 table answers the
+    /// from `get_extension` when asked for `ids::OSCAIRN_EXT_UI` (a draft-6 table answers the
     /// older draft IDs too, whose members are a prefix).
     ///
     /// Safety contract: every `clap_plugin_t` handed to this table's functions must have
@@ -186,6 +186,11 @@ pub mod ui {
                 param_hint: Some($crate::ui::trampoline_param_hint::<$P>),
                 algorithm: Some($crate::ui::trampoline_algorithm::<$P>),
                 seconds: Some($crate::ui::trampoline_seconds::<$P>),
+                // Draft 6's pages, tabs and value icons: not wrapped yet, so declared as none.
+                tab_count: None,
+                tab: None,
+                param_tab: None,
+                value_icon: None,
             }
         };
     }
