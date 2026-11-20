@@ -58,7 +58,9 @@ extern "C" {
  *   OSCAIRN_VOICE_BUDGET_LEAST least important voices in the order below, least important first,
  *   and how many voices it sounds; at most `capacity` contexts, returns how many it wrote. A voice
  *   rule 1 keeps is not listed. When the host then lowers a context's limit by n, the plugin gives
- *   up the n voices it listed first, at the start of its next block: the host checks it.
+ *   up the n voices it listed first, at the start of its next block: the host checks it. So the
+ *   plugin MUST tell each listed unit from a later one in the same slot (the SDK helper does it
+ *   by a note-on serial, never a frame stamp or a time).
  *   A listed voice is the plugin's unit of giving up, the same thing its limit and active_voices
  *   count (a sampler's note with all its layers, a synth's voice), never a part of one.
  *   Units, not weight, are what is counted: `voices`, a context's limit, the instance limit and the
