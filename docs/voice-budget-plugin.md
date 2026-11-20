@@ -24,9 +24,12 @@ as one playing several regions or elements a note.
 
 ## `oscairn::voices::Candidate`
 
-A voice as the order sees it: `context`, `selected` (a channel selects its context), `held` (key
-down), `ending` (already fading out, so giving it up frees nothing new), `mono` (the plugin's own
-sound plays mono, whatever the host says), `loudness` (linear, now) and `age` (larger is newer).
+A voice as the order sees it, your unit of giving up: `context`, `selected` (a channel selects its
+context), `held` (key down), `ending` (already fading out, so giving it up frees nothing new), `mono`
+(the plugin's own sound plays mono, whatever the host says), `loudness` (linear, now: envelope ×
+velocity × volume expression × the sound's output level, no pass over its samples), `age` (larger is
+newer), `pedaled` (key up, a pedal holding it) and `ageMs` (since its note-on, from your frame count;
+below 0 when you keep no time).
 
 ## `int oscairn::voices::victim(count, get, limits, incoming, only = none)`
 

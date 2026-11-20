@@ -54,14 +54,17 @@ extern "C" {
  *   audible notes first.
  *
  * The order a plugin gives up voices in, which the Oscairn SDK's helper (voice-budget-plugin.hpp)
- * implements:
+ * implements (RFC 0046's scale, the same in every plugin):
  *   1. never a held voice of a context marked OSCAIRN_VOICE_BUDGET_MONO or _LEGATO (its one key,
  *      a legato line's included), nor a held voice of a context at or under its reserve, unless
  *      the new voice is for that same context;
- *   2. released voices (key up, pedal or not) before held ones;
+ *   2. by tier: released (key up, no pedal holding it) or inaudible (below -60 dBFS at the
+ *      plugin's output, unless struck under 50 ms ago: an attack is not judged by its level), then
+ *      held only by a pedal, then key held;
  *   3. the new voice's own context before others;
  *   4. the context of lower priority before higher;
- *   5. the quietest, then the oldest.
+ *   5. a voice struck under 50 ms ago after the others of its tier; then the least audible: its
+ *      level in dBFS less a decibel per second of age (at most ten), then the oldest.
  * A plugin may refine this (one element of a layered note before a whole note) but should not
  * break rule 1.
  */

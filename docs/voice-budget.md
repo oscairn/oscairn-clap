@@ -65,10 +65,13 @@ named by no entry has no limit or reserve and priority 0.
 1. Never a held voice of a context marked mono or legato (its one key, a legato line's included),
    nor a held voice of a context at or under its reserve, unless the new voice is for that same
    context.
-2. Released voices (key up, pedal or not) before held ones.
+2. By tier: released (key up, no pedal holding it) or inaudible (below -60 dBFS at the plugin's
+   output, unless struck under 50 ms ago: an attack is not judged by its level), then held only by
+   a pedal, then key held.
 3. The new voice's own context before others.
 4. The context of lower priority before higher.
-5. The quietest, then the oldest.
+5. A voice struck under 50 ms ago after the others of its tier; then the least audible: its level
+   in dBFS less a decibel per second of age (at most ten), then the oldest.
 
 A plugin may refine this (one element of a layered note before a whole note) but should not break
 rule 1. [`voice-budget-plugin.hpp`](voice-budget-plugin.md) implements it.
