@@ -2,10 +2,10 @@
 
 | | |
 | --- | --- |
-| ID | `OSCAIRN_EXT_VOICE_BUDGET` = `"oscairn.voice-budget/draft-1"` (plugin extension) |
+| ID | `OSCAIRN_EXT_VOICE_BUDGET_DRAFT_2` = `"oscairn.voice-budget/draft-2"`; `OSCAIRN_EXT_VOICE_BUDGET` = `"oscairn.voice-budget/draft-1"`, the same table without `importance` (plugin extension) |
 | Header | [`voice-budget.h`](../include/oscairn-clap/voice-budget.h) |
 | SDK helpers | [`voice-budget-plugin.hpp`](voice-budget-plugin.md) (any engine), [`sound-contexts-plugin.hpp`](sound-contexts-plugin.md#voice-budget) (built in) |
-| Design | Oscairn [RFC 0018](https://github.com/oscairn/oscairn/blob/main/docs/rfcs/0018-voice-budget-and-stealing.md#step-4-status) |
+| Design | Oscairn [RFC 0018](https://github.com/oscairn/oscairn/blob/main/docs/rfcs/0018-voice-budget-and-stealing.md#step-4-status); draft 2's importance report, [RFC 0046](https://github.com/oscairn/oscairn/blob/main/docs/rfcs/0046-voice-importance-across-parts.md) |
 | Example | [`examples/voice-budget/`](../examples/voice-budget/) |
 
 With a CPU budget set, Oscairn shares it among every plugin by measured cost. For a plugin without
@@ -22,10 +22,15 @@ never cuts it, except when its pool has no free slot at all, a voice already fad
 
 | Side | Implements |
 | --- | --- |
-| Plugin | `oscairn_plugin_voice_budget_t`: `honors_volume`, `set_limits`, `active_voices`, `notes`, all required (no null entries) |
+| Plugin | `oscairn_plugin_voice_budget_t`: `honors_volume`, `set_limits`, `active_voices`, `notes`, all required (no null entries), and, in draft 2, `importance` |
 | Host | Calls them; nothing for the plugin to call |
 
-A table with a null entry is refused at load ("Invalid voice-budget interface").
+A table with a null entry among the first four is refused at load ("Invalid voice-budget
+interface"). `OSCAIRN_EXT_VOICE_BUDGET` keeps meaning draft 1, so an engine rebuilt against this
+header with a four-entry table keeps answering what it always did. A host asks for draft 2 first,
+then draft 1, and treats a draft-1 table, or a draft-2 table whose `importance` is null, as
+reporting no importance (the cost-only behavior), never refusing it; it reads `importance` only
+from a table that answered draft 2's ID. Return the same table for both IDs.
 
 ## Functions
 
@@ -35,6 +40,7 @@ A table with a null entry is refused at load ("Invalid voice-budget interface").
 | `void set_limits(plugin, limit, contexts, count)` | audio, **between blocks, never during `process`**, only when something changed | Keep at most `limit` voices from the next `process` on (0: as many as the pool holds), and per sound context the settings below. Copy what you need (at most `OSCAIRN_VOICE_BUDGET_MAX_CONTEXTS`, 16, entries). At the next block's start, fade out voices past a lowered limit, in the order below; a new note past it takes a voice the same way |
 | `uint32_t active_voices(plugin, double* voice_cost)` | audio, after every `process` | The voices sounding now, fading ones included, and your estimate of one voice's cost in microseconds a block at the current block size (0: none). The host measures the block's time either way and shares it per voice rather than per note |
 | `uint32_t notes(plugin, oscairn_voice_budget_note_t* notes, capacity)` | audio, after every `process` | Each note still sounding, by the address the host gave it (note ID, port, channel, key), with its voices and its loudness now: the largest of its voices' gains, linear, 1 at full level (envelope, velocity and volume expression; not the patch's output level). Write at most `capacity`, return how many. The host compares notes across plugins by it |
+| `uint32_t importance(plugin, oscairn_voice_budget_importance_t* contexts, capacity)` | audio, after every `process` (draft 2) | Each sounding context's 16 least important voices, least important first, and how many voices it sounds ([the importance report](#the-importance-report-draft-2)). Write at most `capacity` contexts, return how many |
 
 Send `CLAP_EVENT_NOTE_END` when a note's last voice ends, not each voice's.
 
@@ -75,6 +81,47 @@ named by no entry has no limit or reserve and priority 0.
 
 A plugin may refine this (one element of a layered note before a whole note) but should not break
 rule 1. [`voice-budget-plugin.hpp`](voice-budget-plugin.md) implements it.
+
+## The importance report (draft 2)
+
+So a host can weigh a pedaled piano note in one part against a lead's held key in another, a plugin
+reports after each block, per sounding context (`oscairn_voice_budget_importance_t`): `context`,
+`voices` (sounding, those fading out not counted), `weight` (the sum of those voices' weights; 0:
+`voices`) and up to `OSCAIRN_VOICE_BUDGET_LEAST` (16) entries in `least`, least important first, by
+the order above with no voice incoming. Each entry (`oscairn_voice_budget_least_t`): `tier` (0
+released or inaudible, 1 held only by a pedal, 2 key held), `flags` (`OSCAIRN_VOICE_BUDGET_STRUCK`:
+under 50 ms old), `age_ms`, `level_db` and `weight`. Voices rule 1 keeps are not listed.
+
+- **A listed voice is your unit of giving up**: what your limit and `active_voices` count (a
+  sampler's note with all its layers, a synth's voice), never a part of one you cannot give up
+  alone.
+- **Units, not weight, are counted**: `voices`, your limits and the n the host lowers them by all
+  count units, and each entry is one unit whatever its weight, so `limit - n` is exact. The unit
+  must be what your limit counts: an engine whose limit counts engine voices (a VA counting a
+  unison note of width w as w) lists engine voices, weight 1 each, a note of width w as up to w
+  entries; one that gives a note up only whole counts its limit in notes and lists it once, weight w.
+- **`weight`** is the unit's cost against your others (the layers or oscillators it runs; 0 counts
+  as 1), the host's cost estimate only. The host measures one cost per voice for the instance and
+  shares it by weight.
+- **`age_ms`** and the struck flag are taken at the end of the block the report follows: the instant
+  the next block starts, when a lowered limit applies.
+- **`context`**: a sound context's ID; a plugin without sound contexts lists one, under the ID it
+  describes its voices with (the SDK's examples use 0, whose settings `Limits::of(0, true)` reads).
+- **`level_db`** is cheap and the same in every plugin: 20 log10 of envelope level × velocity gain
+  × volume expression × the sound's own output level, 0 dB for the voice's sample or oscillator at
+  nominal full scale; no pass over its samples; -120 to +24 dB, clamped there. The host adds the
+  part's gain.
+
+**The contract.** When the host lowers a context's limit by n from the voices you reported (and
+the notes it sent you since), give up, at the start of your next block, the n voices you listed
+first, and no others. Working the order out again at the drop is not enough: between the list and
+the drop ages, envelope levels, the 50 ms mark and the -60 dBFS floor move, so it can pick another
+voice (B released at -30 dB 2 s old and A released at -40 dB struck 48 ms ago list as [B, A]; a
+block later A is no longer struck, and the order alone takes A). Remember what you listed:
+`voice-budget-plugin.hpp`'s `Importance::next()` gives up the listed voices first, in listed order,
+each while it still sounds in its slot, then works the order out. The host checks, two reports on,
+that the context sounds no more than its limit; Oscairn counts a miss (`importanceMismatch` in
+`engine.timing`, `importance_mismatch` in its engine core) and goes on.
 
 ## What the host does with the report
 
@@ -137,7 +184,11 @@ An instrument on `sound-contexts-plugin.hpp` returns
   more than four; released voices must go first.
 - Check `notes` reports one entry per note with the voice count and a loudness that falls with the
   envelope, and that `NOTE_END` comes once per note.
+- Draft 2: hold two keys softly and three pedaled loudly; `importance` must list the pedaled ones
+  first and the held keys last, whatever their level; lower the context's limit by two and check
+  the next list is the old one less its first two.
 - In Oscairn, set a CPU budget (`budget.set`) and play more notes than it allows.
 - Oscairn's tests: `voice-extension` and `voice-extension-workers` (Basic Synth and a layered test
   plugin, `core/engine/tests/voice_fixture.cpp`), `voice-budget` (host-side stealing),
-  `shared-engine` (per-part entries).
+  `shared-engine` (per-part entries), `voice-importance` (draft 2's list), `engine-core-importance`
+  and `voice-importance-scenario` (the host's decision across parts).

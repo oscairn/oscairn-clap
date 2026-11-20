@@ -309,8 +309,8 @@ pub mod voice_budget {
     use crate::plugin_at;
     use oscairn_clap_sys::clap_sys::plugin::clap_plugin as clap_plugin_t;
     use oscairn_clap_sys::{
-        oscairn_voice_budget_context_t, oscairn_voice_budget_note_t, OSCAIRN_VOICE_BUDGET_LEGATO, OSCAIRN_VOICE_BUDGET_MAX_CONTEXTS,
-        OSCAIRN_VOICE_BUDGET_MONO, OSCAIRN_VOICE_BUDGET_SELECTED,
+        oscairn_voice_budget_context_t, oscairn_voice_budget_importance_t, oscairn_voice_budget_note_t, OSCAIRN_VOICE_BUDGET_LEGATO,
+        OSCAIRN_VOICE_BUDGET_MAX_CONTEXTS, OSCAIRN_VOICE_BUDGET_MONO, OSCAIRN_VOICE_BUDGET_SELECTED,
     };
 
     /// One context's settings as the host sent them.
@@ -385,6 +385,13 @@ pub mod voice_budget {
         fn active_voices(&self, voice_cost: &mut f64) -> u32;
         /// Report each note still sounding through `emit`; stop when it returns false.
         fn notes(&self, emit: &mut dyn FnMut(&Note) -> bool);
+        /// Draft 2: each sounding context's least important voices (voice-budget.h's importance), through
+        /// `emit`; stop when it returns false: the host has no room for more, and the contexts not
+        /// emitted are not reported (record it if you count them). The default reports none, as a
+        /// draft-1 plugin.
+        fn importance(&self, emit: &mut dyn FnMut(&oscairn_voice_budget_importance_t) -> bool) {
+            let _ = emit;
+        }
     }
 
     // The trampolines are public only for `voice_budget_table!`. Safety, for each: `plugin` is
@@ -459,9 +466,34 @@ pub mod voice_budget {
         written
     }
 
+    #[doc(hidden)]
+    pub unsafe extern "C" fn trampoline_importance<P: VoiceBudget>(
+        plugin: *const clap_plugin_t,
+        contexts: *mut oscairn_voice_budget_importance_t,
+        capacity: u32,
+    ) -> u32 {
+        let me = unsafe { plugin_at::<P>(plugin) };
+        let mut written = 0u32;
+        // No room (or a null pointer): nothing written, and `emit` returns false at once, so the plugin
+        // knows the host took none of its lists.
+        let capacity = if contexts.is_null() { 0 } else { capacity };
+        // Safety: the host gives room for `capacity` entries at a non-null `contexts`; we write at most that many.
+        unsafe {
+            me.importance(&mut |list| {
+                if written >= capacity {
+                    return false;
+                }
+                *contexts.add(written as usize) = *list;
+                written += 1;
+                true
+            });
+        }
+        written
+    }
+
     /// The `oscairn_plugin_voice_budget_t` table for `P`; put it in a `static` and return a
-    /// reference to it from `get_extension` when asked for `ids::OSCAIRN_EXT_VOICE_BUDGET`. No
-    /// null entries: the host refuses a table with one.
+    /// reference to it from `get_extension` when asked for `ids::OSCAIRN_EXT_VOICE_BUDGET_DRAFT_2`
+    /// or `ids::OSCAIRN_EXT_VOICE_BUDGET` (draft 1's ID, for an older host). No null entries: the host refuses a table with one.
     ///
     /// Safety contract: as in [`crate::ui_table`].
     #[macro_export]
@@ -472,6 +504,7 @@ pub mod voice_budget {
                 set_limits: Some($crate::voice_budget::trampoline_set_limits::<$P>),
                 active_voices: Some($crate::voice_budget::trampoline_active_voices::<$P>),
                 notes: Some($crate::voice_budget::trampoline_notes::<$P>),
+                importance: Some($crate::voice_budget::trampoline_importance::<$P>),
             }
         };
     }

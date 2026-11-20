@@ -3,11 +3,11 @@
 | | |
 | --- | --- |
 | Header | [`voice-budget-plugin.hpp`](../include/oscairn-clap/voice-budget-plugin.hpp) (C++17, header-only, MIT) |
-| Implements | The plugin side of [`oscairn.voice-budget/draft-1`](voice-budget.md) |
+| Implements | The plugin side of [`oscairn.voice-budget/draft-2`](voice-budget.md) |
 | Example | [`examples/voice-budget/`](../examples/voice-budget/) |
 
-The settings the host gives (`Limits`), the order to give voices up in (`victim`), and the report
-of each note's loudness (`Report`). No allocation; everything here runs on the audio thread. An
+The settings the host gives (`Limits`), the order to give voices up in (`victim`), the report
+of each note's loudness (`Report`) and of each context's least important voices (`Importance`). No allocation; everything here runs on the audio thread. An
 instrument built on [`sound-contexts-plugin.hpp`](sound-contexts-plugin.md#voice-budget) gets all
 of it from its Engine and needs nothing from this page. Use it directly in any other engine, such
 as one playing several regions or elements a note.
@@ -28,8 +28,8 @@ A voice as the order sees it, your unit of giving up: `context`, `selected` (a c
 context), `held` (key down), `ending` (already fading out, so giving it up frees nothing new), `mono`
 (the plugin's own sound plays mono, whatever the host says), `loudness` (linear, now: envelope ×
 velocity × volume expression × the sound's output level, no pass over its samples), `age` (larger is
-newer), `pedaled` (key up, a pedal holding it) and `ageMs` (since its note-on, from your frame count;
-below 0 when you keep no time).
+newer), `pedaled` (key up, a pedal holding it), `ageMs` (since its note-on, from your frame count;
+below 0 when you keep no time) and `weight` (its cost against your other voices; default 1).
 
 ## `int oscairn::voices::victim(count, get, limits, incoming, only = none)`
 
@@ -47,10 +47,28 @@ that many).
 
 How to use it:
 
-- When a new voice is needed, or at a block's start while more voices sound than `limits.limit`
-  (or a context's own limit) allows, describe each voice and call `victim`.
+- When a new voice is needed, describe each voice and call `victim`. At a block's start while more
+  voices sound than `limits.limit` (or a context's own limit) allows, call `Importance::next`
+  instead (below), so what you listed goes first.
 - Fade the voice it names out over 2 to 5 ms rather than cutting it, unless the pool has no free
   slot at all (then cut, a voice already fading first).
+
+## `oscairn::voices::Importance<Contexts = 16>`
+
+Draft 2's report. After each block, `list(count, get, limits)` over the same candidates `victim()`
+sees, then `write(out, capacity)` from `importance`. One pass, no sort: each voice's key is worked
+out once (one log10) and kept only if it beats the 16th kept (about 1 µs a block for 128 voices on
+an Apple M-series core). Past its reserve a context lists only the held voices beyond it.
+`truncated` says the last `list` or `write` left a context out (past `Contexts`, or past the host's
+capacity).
+
+`next(count, get, limits, only = none)`: the voice to give up at a block's start, past a lowered
+limit: the first voice the last `list` named that still sounds in its slot (the same `age`, so make
+`age` a note-on serial that tells a slot's voices apart, and the same context, not ending, not kept
+by rule 1 now), a context's in listed order, across contexts the first of each by `victim`'s order;
+when none is left, `victim`'s. So a context the host lowers by n gives up exactly the n it listed
+first, though the order has moved since; a listed voice that ended or whose slot a new note took
+is skipped.
 
 ## `oscairn::voices::Report<Capacity>`
 

@@ -46,13 +46,18 @@
 // restored(), forget any pins the instrument holds itself, such as a ringing tail's. A refused
 // load changes nothing and doesn't call restored(), so do not forget them in snapshotLoading(true).
 //
-// oscairn.voice-budget (voice-budget.h, RFC 0018): building an oscairn_plugin_voice_budget_t
-// {Engine::honorsVolume, Engine::setLimits, Engine::activeVoices, Engine::voiceNotes} and returning
-// it from get_extension, the instrument keeps within the voices the host gives it and each
+// oscairn.voice-budget (voice-budget.h, RFC 0018, RFC 0046): building an oscairn_plugin_voice_budget_t
+// {Engine::honorsVolume, Engine::setLimits, Engine::activeVoices, Engine::voiceNotes, Engine::importance}
+// and returning it from get_extension for OSCAIRN_EXT_VOICE_BUDGET_DRAFT_2 and for OSCAIRN_EXT_VOICE_BUDGET
+// (draft 1, for an older host), the instrument keeps within the voices the host gives it and each
 // context's limit, reserve, priority and mode, giving voices up in that header's order (from
 // voice-budget-plugin.hpp): a voice past a limit fades out over the choke time; one is cut only when
 // the pool has no free slot, a voice already fading first. It may provide
-//   double loudness(const Voice&)  the voice's level now, linear (default: velocity, volume and choke fade)
+//   double loudness(const Voice&)  the voice's level now at the plugin's output, linear: envelope x
+//                                  velocity x volume x the sound's own output level, no pass over its
+//                                  samples (default: velocity, volume and choke fade)
+//   float weight(const Voice&)     its cost relative to the other voices, as the layers or oscillators
+//                                  it runs (default: 1)
 //   bool mono(const Context&)      the sound plays one note at a time (default: false)
 //   double voiceCost()             microseconds a voice costs a block (default: 0, no estimate)
 //   static constexpr bool volumeExpressions = true;   when render multiplies by amplitude()
@@ -138,6 +143,7 @@ namespace oscairn::contexts
         uint32_t nextContext = 1; // main thread, never reuse IDs
         uint32_t chokeFrames = 144; // 3 ms at 48 kHz; setSampleRate keeps it 3 ms
         oscairn::voices::Limits voiceLimits; // audio thread: oscairn.voice-budget's, as set_limits gave them
+        oscairn::voices::Importance<> importanceReport; // audio thread: draft 2's, built after each block
         double voiceRate = 48000; // for the voices' ages
         int64_t steadyTime = -1; // audio thread: this process()'s first frame, -1 unknown
         double controlGlide = 1.0 - std::exp(-1.0 / 240.0); // per sample: a 5 ms time constant at 48 kHz
@@ -237,12 +243,19 @@ namespace oscairn::contexts
             for(size_t i = 0; i < VoiceCount; ++i) if(voices[i].active) candidates[i] = candidate(voices[i]);
             return oscairn::voices::victim(VoiceCount, [&](size_t i) { return voices[i].active ? &candidates[i] : nullptr; }, voiceLimits, incoming, only);
         }
+        // Past a lowered limit: the voices the last importance report listed first, then victim()'s.
+        int listedVictim(uint32_t only)
+        {
+            std::array<oscairn::voices::Candidate, VoiceCount> candidates{};
+            for(size_t i = 0; i < VoiceCount; ++i) if(voices[i].active) candidates[i] = candidate(voices[i]);
+            return importanceReport.next(VoiceCount, [&](size_t i) { return voices[i].active ? &candidates[i] : nullptr; }, voiceLimits, only);
+        }
         // A voice as the order sees it, now.
         oscairn::voices::Candidate candidate(const Voice& v)
         {
             const auto& c = contexts[v.context];
             const double ageMs = steadyTime < 0 || v.startedAt < 0 ? -1.0 : double(steadyTime + eventTime - v.startedAt) * 1000.0 / voiceRate;
-            return {c.id, c.selected.load(std::memory_order_relaxed) != 0, v.held, v.chokeLength != 0, derived().mono(c), derived().loudness(v), v.started, v.pedaled, ageMs};
+            return {c.id, c.selected.load(std::memory_order_relaxed) != 0, v.held, v.chokeLength != 0, derived().mono(c), derived().loudness(v), v.started, v.pedaled, ageMs, derived().weight(v)};
         }
         // Enters the release stage: no longer held by a pedal.
         void releaseVoice(Voice& v) { v.pedaled = false; derived().release(v); }
@@ -259,11 +272,12 @@ namespace oscairn::contexts
             {
                 const auto& c = contexts[slot]; if(!c.users.load(std::memory_order_acquire)) continue; // pinned, so its id is stable; prepared is the main thread's
                 const auto settings = voiceLimits.of(c.id, c.selected.load(std::memory_order_relaxed) != 0);
-                while(settings.limit && sounding(slot) > settings.limit) { const int i = voiceVictim(oscairn::voices::none, c.id); if(i < 0) break; fadeOut(i); }
+                while(settings.limit && sounding(slot) > settings.limit) { const int i = listedVictim(c.id); if(i < 0) break; fadeOut(i); }
             }
-            while(voiceLimits.limit && sounding() > voiceLimits.limit) { const int i = voiceVictim(oscairn::voices::none); if(i < 0) break; fadeOut(i); }
+            while(voiceLimits.limit && sounding() > voiceLimits.limit) { const int i = listedVictim(oscairn::voices::none); if(i < 0) break; fadeOut(i); }
         }
         double loudness(const Voice& v) const { return v.velocity * amplitude(v, 0); }
+        float weight(const Voice&) const { return 1; }
         bool mono(const Context&) const { return false; }
         double voiceCost() const { return 0; }
         bool asleep() const { return false; }
@@ -275,6 +289,15 @@ namespace oscairn::contexts
         {
             auto& s = self(p); if(cost) *cost = s.derived().voiceCost();
             uint32_t n = 0; for(const auto& v : s.voices) n += v.active; return n;
+        }
+        // Draft 2: each context's least important voices, as the last block left them.
+        static uint32_t importance(const clap_plugin_t* p, oscairn_voice_budget_importance_t* lists, uint32_t capacity)
+        {
+            auto& s = self(p);
+            std::array<oscairn::voices::Candidate, VoiceCount> candidates{};
+            for(size_t i = 0; i < VoiceCount; ++i) if(s.voices[i].active) candidates[i] = s.candidate(s.voices[i]);
+            s.importanceReport.list(VoiceCount, [&](size_t i) { return s.voices[i].active ? &candidates[i] : nullptr; }, s.voiceLimits);
+            return s.importanceReport.write(lists, capacity);
         }
         static uint32_t voiceNotes(const clap_plugin_t* p, oscairn_voice_budget_note_t* notes, uint32_t capacity)
         {
@@ -391,7 +414,8 @@ namespace oscairn::contexts
             if(process->audio_outputs_count < 1 || process->audio_outputs[0].channel_count < 2)
                 return CLAP_PROCESS_ERROR;
             s.output = process->out_events; s.eventTime = 0; s.steadyTime = process->steady_time;
-            struct ClearOutput { Engine& s; ~ClearOutput() { s.output = nullptr; s.ringOut = nullptr; } } clearOutput{s}; // ring_out gives one process() its buffer
+            // ring_out gives one process() its buffer; the importance report after it takes the voices' ages at the block's end.
+            struct ClearOutput { Engine& s; uint32_t frames; ~ClearOutput() { s.output = nullptr; s.ringOut = nullptr; s.eventTime = frames; } } clearOutput{s, process->frames_count};
             s.applySelections(process->out_events);
             s.keepWithinLimits();
             const uint32_t frames = process->frames_count;
