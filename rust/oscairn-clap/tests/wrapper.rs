@@ -277,3 +277,55 @@ fn limits_lookup_follows_the_selected_fallback() {
     assert_eq!(limits.of(5, false).priority, 0);
     assert_eq!(limits.of(5, false).reserve, 0);
 }
+
+// Draft 2's importance: a plugin that reports two contexts, through the table as a host calls it.
+struct Reports;
+
+impl VoiceBudget for Reports {
+    fn honors_volume(&self) -> bool {
+        true
+    }
+    fn set_limits(&self, _limit: u32, _contexts: &[Context]) {}
+    fn active_voices(&self, _voice_cost: &mut f64) -> u32 {
+        3
+    }
+    fn notes(&self, _emit: &mut dyn FnMut(&Note) -> bool) {}
+    const HAS_IMPORTANCE: bool = true;
+    fn importance(&self, emit: &mut dyn FnMut(&oscairn_clap_sys::oscairn_voice_budget_importance_t) -> bool) {
+        for context in [4u32, 9] {
+            let mut list = oscairn_clap_sys::oscairn_voice_budget_importance_t { context, voices: 2, count: 1, ..Default::default() };
+            list.least[0].tier = 2;
+            list.least[0].level_db = -12.0;
+            if !emit(&list) {
+                return;
+            }
+        }
+    }
+}
+
+#[test]
+fn importance_is_written_up_to_capacity_and_null_contexts_write_nothing() {
+    let me = Reports;
+    let table = oscairn_clap::voice_budget_table!(Reports);
+    let plugin = plugin_with_data((&me as *const Reports).cast_mut().cast());
+    let importance = table.importance.expect("a plugin with HAS_IMPORTANCE fills importance");
+
+    let mut lists = [oscairn_clap_sys::oscairn_voice_budget_importance_t::default(); 4];
+    assert_eq!(unsafe { importance(&plugin, lists.as_mut_ptr(), 4) }, 2, "both contexts with room");
+    assert_eq!((lists[0].context, lists[1].context), (4, 9));
+    assert_eq!(lists[1].least[0].tier, 2);
+    assert_eq!(lists[1].least[0].level_db, -12.0);
+
+    let mut lists = [oscairn_clap_sys::oscairn_voice_budget_importance_t::default(); 4];
+    assert_eq!(unsafe { importance(&plugin, lists.as_mut_ptr(), 1) }, 1, "capped at capacity");
+    assert_eq!(lists[1].context, 0, "nothing written past capacity");
+
+    assert_eq!(unsafe { importance(&plugin, std::ptr::null_mut(), 4) }, 0, "a null pointer is no room");
+}
+
+#[test]
+fn importance_is_null_unless_the_plugin_implements_it() {
+    let table = oscairn_clap::voice_budget_table!(Budget);
+    assert!(table.importance.is_none(), "no HAS_IMPORTANCE: no report");
+    assert!(table.honors_volume.is_some() && table.set_limits.is_some() && table.active_voices.is_some() && table.notes.is_some());
+}
