@@ -26,9 +26,11 @@
 //     they still sound in their slots, then victim()'s. So a context the host lowers by n gives up
 //     exactly the n voices it listed first, though levels, ages and the 50 ms mark have moved
 //     since the list was made.
-// victim() gives up voices one at a time, so a layered note loses its quietest layer before
-// another note loses its only one when the layer is the quieter: keep a note's every voice a
-// Candidate with its own loudness.
+// victim() gives up voices one at a time. An engine that can give up one layer of a note alone may
+// keep each layer a Candidate with its own loudness, so a layered note loses its quietest layer
+// before another note loses its only one; an engine that gives a note up only whole (unison
+// copies, layers it cannot drop alone) makes the note one Candidate, its weight the engine voices
+// or layers it runs, and counts its limits and active_voices in notes.
 
 #pragma once
 #include <oscairn-clap/voice-budget.h>

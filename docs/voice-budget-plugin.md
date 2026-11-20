@@ -39,10 +39,13 @@ waits), and from context `only` alone when it is not `none` (to keep that contex
 limit). Returns -1 when every voice is protected or ending. It applies
 [the order](voice-budget.md#the-order-to-give-voices-up-in): never a held voice of a mono or legato
 context, nor one of a context at or under its reserve unless the new voice is that context's;
-released before held; the new voice's own context first; lower priority first; the quietest, then
-the oldest. It gives voices up one at a time, so keep each of a note's voices a Candidate with its
-own loudness: a layered note then loses its quietest layer before another note loses its only
-voice. Past 64 distinct contexts, the reserve count shares its last slot (no Oscairn plugin has
+by tier (released or inaudible, then pedaled, then key held); the new voice's own context first;
+lower priority first; one struck under 50 ms ago last in its tier; the least audible, then the
+oldest. It gives voices up one at a time. An engine that can give up one layer of a note alone may
+keep each layer a Candidate with its own loudness, so a layered note loses its quietest layer
+before another note loses its only voice; one that gives a note up only whole (unison copies,
+layers it cannot drop alone) makes the note one Candidate, its `weight` the engine voices or layers
+it runs, and counts its limits and `active_voices` in notes. Past 64 distinct contexts, the reserve count shares its last slot (no Oscairn plugin has
 that many).
 
 How to use it:
