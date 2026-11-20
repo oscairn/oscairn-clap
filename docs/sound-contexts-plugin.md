@@ -3,7 +3,7 @@
 | | |
 | --- | --- |
 | Header | [`sound-contexts-plugin.hpp`](../include/oscairn-clap/sound-contexts-plugin.hpp) (C++17, header-only, MIT; relicensed from AGPL-3.0-or-later on 2026-10-31) |
-| Implements | [`oscairn.sound-contexts/draft-5`](sound-contexts.md), [`oscairn.sound-snapshots/draft-4`](sound-snapshots.md), [`oscairn.voice-budget/draft-1`](voice-budget.md), and the voice and note handling around them |
+| Implements | [`oscairn.sound-contexts/draft-5`](sound-contexts.md), [`oscairn.sound-snapshots/draft-4`](sound-snapshots.md), [`oscairn.voice-budget/draft-2`](voice-budget.md), and the voice and note handling around them |
 | Example | [`examples/sound-contexts/`](../examples/sound-contexts/), [`examples/sound-snapshots/`](../examples/sound-snapshots/) |
 | References | Oscairn's Basic Synth (`plugins/basic-synth/basic_synth.cpp`) and the Legacy Sampler (github.com/oscairn/sampler) |
 
@@ -43,7 +43,8 @@ Optional, each with a default:
 | `void snapshotLoading(bool)` | Called around reading a snapshot's patches |
 | `void voiceFinished(Voice&)` | Called whenever a voice ends: released out, choked, stolen or reset, so the instrument need not poll |
 | `void discarded(Context&)` | Main thread, after a context is unpinned and discarded |
-| `double loudness(const Voice&) const` | The voice's level now, linear (default: velocity × volume expression × choke fade) |
+| `double loudness(const Voice&) const` | The voice's level now at the plugin's output, linear: envelope × velocity × volume expression × the sound's output level, no pass over its samples (default: velocity × volume expression × choke fade) |
+| `float weight(const Voice&) const` | Its cost against the other voices, as the layers or oscillators it runs, for draft 2's report (default 1) |
 | `bool mono(const Context&) const` | The sound plays one note at a time (default false) |
 | `double voiceCost() const` | Microseconds a voice costs a block (default 0, no estimate) |
 | `static constexpr bool volumeExpressions` | True when `render` multiplies by `amplitude()` (default false) |
@@ -117,7 +118,8 @@ else { mainL[i] += left; mainR[i] += right; }
 ## Voice budget
 
 Return `oscairn_plugin_voice_budget_t{Engine::honorsVolume, Engine::setLimits,
-Engine::activeVoices, Engine::voiceNotes}` from `get_extension(OSCAIRN_EXT_VOICE_BUDGET)`. The
+Engine::activeVoices, Engine::voiceNotes, Engine::importance}` from `get_extension` for
+`OSCAIRN_EXT_VOICE_BUDGET_DRAFT_2` and `OSCAIRN_EXT_VOICE_BUDGET` (draft 1). The
 Engine then keeps within the voices the host gives and each context's limit, reserve, priority and
 mode, giving voices up in [the order](voice-budget.md#the-order-to-give-voices-up-in): a voice past
 a limit fades out over the choke time; one is cut only when the pool has no free slot, a voice

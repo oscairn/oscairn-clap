@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MIT
 //
-// oscairn.voice-budget (draft 1): the host shares one processing budget among every plugin; for
-// an instrument with this extension it reads what the plugin plays and tells it how many voices
-// it may keep. The plugin gives voices up itself — never a held note of a mono or reserved
-// context, released before held, the new voice's own context first, lower priority, quietest,
-// oldest — and fades what it gives up. The voice pool here is four sines; the SDK helper
+// oscairn.voice-budget (draft 2, answering draft 1 too): the host shares one processing budget
+// among every plugin; for an instrument with this extension it reads what the plugin plays and
+// tells it how many voices it may keep. The plugin gives voices up itself — never a held note of a
+// mono or reserved context, released or inaudible before pedaled before held, the new voice's own
+// context first, lower priority, least audible, oldest — and fades what it gives up. After each
+// block it reports its least important voices (importance); past a lowered limit it gives up the
+// ones it listed, in listed order (Importance::next()). The voice pool here is four sines; the SDK helper
 // (voice-budget-plugin.hpp) decides the order, the plugin owns the voices and the fades.
 // See docs/rfcs/0018-voice-budget-and-stealing.md and plugins/basic-synth.
 #include <clap/clap.h>
@@ -44,6 +46,7 @@ namespace
         std::array<Voice, pool> voices{};
         std::atomic<double> level{.5};
         oscairn::voices::Limits limits;    // set_limits' settings, copied
+        oscairn::voices::Importance<1> importance; // draft 2's report, built after each block
         uint64_t started = 0;
         uint32_t chokeFrames = 144;
     };
@@ -63,27 +66,35 @@ namespace
         return v.active && (noteId < 0 || v.noteId == noteId) && (channel < 0 || v.channel == channel) && (key < 0 || v.key == key);
     }
 
-    // The voice to give up for a new one, by the header's order. A plugin without sound contexts
-    // reads context 0's settings, so every candidate says context 0, never selected.
-    int victim(Plugin& s)
+    // Each voice as the order sees it. A plugin without sound contexts reads context 0's settings,
+    // so every candidate says context 0, never selected. (This example keeps no pedal or age.)
+    std::array<oscairn::voices::Candidate, pool> describe(const Plugin& s)
     {
         std::array<oscairn::voices::Candidate, pool> described{};
         for(size_t i = 0; i < pool; ++i)
             if(s.voices[i].active)
                 described[i] = {0, false, s.voices[i].held, s.voices[i].chokeLength != 0, false,
                                 loudness(s.voices[i]), s.voices[i].started};
+        return described;
+    }
+    // The voice to give up for a new one, by the header's order.
+    int victim(Plugin& s)
+    {
+        const auto described = describe(s);
         return oscairn::voices::victim(pool, [&](size_t i) { return s.voices[i].active ? &described[i] : nullptr; }, s.limits,
                                        oscairn::voices::none);
     }
 
-    // Past the limit set_limits gave, fade voices out by the header's order until it holds.
+    // Past the limit set_limits gave, fade voices out until it holds: those the last report listed
+    // first, in listed order, then by the header's order.
     void keepWithinLimit(Plugin& s)
     {
         uint32_t sounding = 0;
         for(const auto& v : s.voices) sounding += v.active && !v.chokeLength;
         for(; s.limits.limit && sounding > s.limits.limit; --sounding)
         {
-            const int i = victim(s);
+            const auto described = describe(s);
+            const int i = s.importance.next(pool, [&](size_t k) { return s.voices[k].active ? &described[k] : nullptr; }, s.limits);
             if(i < 0) break;
             auto& v = s.voices[size_t(i)];
             v.held = false;
@@ -210,6 +221,14 @@ namespace
             for(const auto& v : s.voices)
                 if(v.active) report.add(v.noteId, 0, v.channel, v.key, loudness(v));
             return report.write(out, capacity);
+        },
+        // Draft 2: the least important voices, by the same order victim() gives them up in.
+        [](const clap_plugin_t* p, oscairn_voice_budget_importance_t* out, uint32_t capacity) -> uint32_t
+        {
+            auto& s = self(p);
+            const auto described = describe(s);
+            s.importance.list(pool, [&](size_t i) { return s.voices[i].active ? &described[i] : nullptr; }, s.limits);
+            return s.importance.write(out, capacity);
         }};
 
     const clap_plugin_t* create()
@@ -292,7 +311,7 @@ namespace
         };
         p.get_extension = [](const clap_plugin_t*, const char* id) -> const void*
         {
-            if(!std::strcmp(id, OSCAIRN_EXT_VOICE_BUDGET)) return &budget;
+            if(!std::strcmp(id, OSCAIRN_EXT_VOICE_BUDGET_DRAFT_2) || !std::strcmp(id, OSCAIRN_EXT_VOICE_BUDGET)) return &budget;
             if(!std::strcmp(id, CLAP_EXT_AUDIO_PORTS)) return &audio;
             if(!std::strcmp(id, CLAP_EXT_NOTE_PORTS)) return &notes;
             if(!std::strcmp(id, CLAP_EXT_PARAMS)) return &params;
