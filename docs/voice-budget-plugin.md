@@ -28,7 +28,7 @@ A voice as the order sees it, your unit of giving up: `context`, `selected` (a c
 context), `held` (key down), `ending` (already fading out, so giving it up frees nothing new), `mono`
 (the plugin's own sound plays mono, whatever the host says), `loudness` (linear, now: envelope ×
 velocity × volume expression × the sound's output level, no pass over its samples), `age` (larger is
-newer), `pedaled` (key up, a pedal holding it), `ageMs` (since its note-on, from your frame count;
+newer; it MUST be a note-on serial unique to each note a slot holds, never a frame stamp or a time), `pedaled` (key up, a pedal holding it), `ageMs` (since its note-on, from your frame count;
 below 0 when you keep no time) and `weight` (its cost against your other voices; default 1).
 
 ## `int oscairn::voices::victim(count, get, limits, incoming, only = none)`
@@ -66,12 +66,15 @@ an Apple M-series core). Past its reserve a context lists only the held voices b
 capacity).
 
 `next(count, get, limits, only = none)`: the voice to give up at a block's start, past a lowered
-limit: the first voice the last `list` named that still sounds in its slot (the same `age`, so make
-`age` a note-on serial that tells a slot's voices apart, and the same context, not ending, not kept
+limit: the first voice the last `list` named that still sounds in its slot (the same `age`, which is
+why `age` must be a note-on serial, and the same context, not ending, not kept
 by rule 1 now), a context's in listed order, across contexts the first of each by `victim`'s order (tier, then priority, then the key);
 when none is left, `victim`'s. So a context the host lowers by n gives up exactly the n it listed
 first, though the order has moved since; a listed voice that ended or whose slot a new note took
-is skipped.
+is skipped. In a debug build (no `NDEBUG`) it asserts when the voice in a listed slot has the listed
+`age` and context but is younger than the listed one: another note given the same `age`. It cannot
+catch that when you keep no time (`ageMs` below 0), nor when the two notes started on the same
+frame, so the serial is yours to keep.
 
 ## `oscairn::voices::Report<Capacity>`
 
