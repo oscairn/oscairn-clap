@@ -38,7 +38,7 @@ from a table that answered draft 2's ID. Return the same table for both IDs.
 | --- | --- | --- |
 | `bool honors_volume(plugin)` | main, once after `init` (in a worker, once at load) | True when every voice follows `CLAP_NOTE_EXPRESSION_VOLUME`, so the host's own 5 ms fade before a choke works. Under pressure the host fades a held note of a plugin that says so before one that does not |
 | `void set_limits(plugin, limit, contexts, count)` | audio, **between blocks, never during `process`**, only when something changed | Keep at most `limit` voices from the next `process` on (0: as many as the pool holds), and per sound context the settings below. Copy what you need (at most `OSCAIRN_VOICE_BUDGET_MAX_CONTEXTS`, 16, entries). At the next block's start, fade out voices past a lowered limit, in the order below; a new note past it takes a voice the same way |
-| `uint32_t active_voices(plugin, double* voice_cost)` | audio, after every `process` | The voices sounding now, fading ones included, and your estimate of one voice's cost in microseconds a block at the current block size (0: none). The host measures the block's time either way and shares it per voice rather than per note |
+| `uint32_t active_voices(plugin, double* voice_cost)` | audio, after every `process` | The voices sounding now, fading ones included (in draft 2 the units `importance` lists: notes, for an engine that gives a note up only whole), and your estimate of one voice's cost in microseconds a block at the current block size (0: none). The host measures the block's time either way and shares it per voice rather than per note |
 | `uint32_t notes(plugin, oscairn_voice_budget_note_t* notes, capacity)` | audio, after every `process` | Each note still sounding, by the address the host gave it (note ID, port, channel, key), with its voices and its loudness now: the largest of its voices' gains, linear, 1 at full level (envelope, velocity and volume expression; not the patch's output level). Write at most `capacity`, return how many. The host compares notes across plugins by it |
 | `uint32_t importance(plugin, oscairn_voice_budget_importance_t* contexts, capacity)` | audio, after every `process` (draft 2) | Each sounding context's 16 least important voices, least important first, and how many voices it sounds ([the importance report](#the-importance-report-draft-2)). Write at most `capacity` contexts, return how many |
 
@@ -97,9 +97,10 @@ under 50 ms old), `age_ms`, `level_db` and `weight`. Voices rule 1 keeps are not
   alone.
 - **Units, not weight, are counted**: `voices`, your limits and the n the host lowers them by all
   count units, and each entry is one unit whatever its weight, so `limit - n` is exact. The unit
-  must be what your limit counts: an engine whose limit counts engine voices (a VA counting a
-  unison note of width w as w) lists engine voices, weight 1 each, a note of width w as up to w
-  entries; one that gives a note up only whole counts its limit in notes and lists it once, weight w.
+  must be what your limit counts. An engine whose notes hold several engine voices it does not give
+  up one by one (unison copies, a sampler's layers) counts notes: one entry per note, its `weight`
+  the engine voices or layers the note runs, and its limits and `active_voices` in notes. One that
+  gives up a layer or copy alone may count those instead, each an entry of its own.
 - **`weight`** is the unit's cost against your others (the layers or oscillators it runs; 0 counts
   as 1), the host's cost estimate only. The host measures one cost per voice for the instance and
   shares it by weight.
