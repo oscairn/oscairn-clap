@@ -35,6 +35,51 @@ namespace helper
             check(victim(2, p, limits, none) == 1 && report.next(2, p, limits) == 1,
                   "the instance limit: next() as victim(), a released voice of a higher-priority part before a held key");
         }
+        const Limits limits;
+        {
+            // Listed after one block, dropped at the next: B released at -30 dB, 2 s old, and A
+            // released at -40 dB, struck 48 ms ago, list as [B, A]. A block later A is no longer
+            // struck and the order alone takes A; next() still gives up B, the voice listed first.
+            Pool p = pool({voice(0, false, .0316, 1, 2000), voice(0, false, .01, 2, 48)});
+            Importance<> report; report.list(2, p, limits);
+            p.v[0].ageMs += 2.7; p.v[1].ageMs += 2.7;
+            check(victim(2, p, limits, none, 0) == 1 && report.next(2, p, limits, 0) == 0,
+                  "a block on, next() gives up the voice it listed first, where victim() alone would not");
+        }
+        {
+            // Three released voices listed quietest first: slots 0, 1, 2.
+            Pool p = pool({voice(0, false, .01, 1, 3000), voice(0, false, .02, 2, 3000), voice(0, false, .03, 3, 3000)});
+            Importance<> report; report.list(3, p, limits);
+            p.live[0] = false; // ended by itself before the drop
+            check(report.next(3, p, limits, 0) == 1, "a listed voice that ended is skipped");
+            p.v[1] = voice(0, true, .001, 9, 1); // its slot taken by a new note
+            check(report.next(3, p, limits, 0) == 2, "a listed slot a new note took is skipped, the new note kept");
+            p.v[2].ending = true; // lowered, raised and lowered again: the one given up still fades
+            check(report.next(3, p, limits, 0) == 1, "past the list, victim()'s voice");
+        }
+        {
+            // Lowered by one, raised, lowered by one again with no new list: the next listed goes.
+            Pool p = pool({voice(0, false, .01, 1, 3000), voice(0, false, .02, 2, 3000), voice(0, false, .03, 3, 3000)});
+            Importance<> report; report.list(3, p, limits);
+            const int first = report.next(3, p, limits, 0);
+            p.v[size_t(first)].ending = true;
+            check(first == 0 && report.next(3, p, limits, 0) == 1, "lowered, raised and lowered again: the listed voices in order");
+        }
+        {
+            // n above the list: twenty voices, sixteen listed, eighteen given up.
+            std::vector<Candidate> v;
+            for(int i = 0; i < 20; ++i) v.push_back(voice(0, false, .001 * (i + 1), uint64_t(i + 1), 5000));
+            Pool p = pool(v);
+            Importance<> report; report.list(20, p, limits);
+            bool ordered = true;
+            for(int k = 0; k < 18 && ordered; ++k)
+            {
+                const int i = report.next(20, p, limits, 0);
+                ordered = i >= 0 && !p.v[size_t(i)].ending && (k >= 16 || i == k);
+                if(i >= 0) p.v[size_t(i)].ending = true;
+            }
+            check(ordered, "n above the list: the sixteen listed in order, then victim()'s, none twice");
+        }
     }
 }
 
