@@ -3,10 +3,45 @@
 // plugin gives voices up itself — fading, reported through active_voices and notes, the count
 // shrinking to the limit — instead of the host cutting whole notes.
 #include "../mini-host.hpp"
+#include <oscairn-clap/voice-budget-plugin.hpp>
+
+// The SDK helper alone (voice-budget-plugin.hpp), on voices described by hand.
+namespace helper
+{
+    using oscairn::voices::Candidate;
+    struct Pool
+    {
+        std::vector<Candidate> v; std::vector<bool> live;
+        const Candidate* operator()(size_t i) const { return live[i] ? &v[i] : nullptr; }
+    };
+    Candidate voice(uint32_t context, bool held, double gain, uint64_t serial, double ageMs)
+    {
+        Candidate c; c.context = context; c.held = held; c.loudness = gain; c.age = serial; c.ageMs = ageMs;
+        return c;
+    }
+    Pool pool(std::vector<Candidate> v) { Pool p{v, {}}; p.live.assign(p.v.size(), true); return p; }
+
+    void checks()
+    {
+        using namespace oscairn::voices;
+        {
+            // Past the instance limit, by victim()'s order: a released voice of a priority-5 part
+            // goes before a held key of a priority-0 part (tier before priority).
+            oscairn_voice_budget_context_t parts[2]{};
+            parts[0].context = 1; parts[0].priority = 0; parts[1].context = 2; parts[1].priority = 5;
+            Limits limits; limits.set(0, parts, 2);
+            Pool p = pool({voice(1, true, .5, 1, 3000), voice(2, false, .5, 2, 3000)});
+            Importance<> report; report.list(2, p, limits);
+            check(victim(2, p, limits, none) == 1 && report.next(2, p, limits) == 1,
+                  "the instance limit: next() as victim(), a released voice of a higher-priority part before a held key");
+        }
+    }
+}
 
 int main(int argc, char** argv)
 {
     if(argc < 2) { std::fprintf(stderr, "usage: %s PLUGIN.clap\n", argv[0]); return 2; }
+    helper::checks();
     Plugin plugin(argv[1], "org.oscairn.example.voice-budget");
     const auto* budget = plugin.extension<oscairn_plugin_voice_budget_t>(OSCAIRN_EXT_VOICE_BUDGET_DRAFT_2);
     check(budget && budget->honors_volume && budget->set_limits && budget->active_voices && budget->notes && budget->importance,

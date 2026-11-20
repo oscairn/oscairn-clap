@@ -228,7 +228,7 @@ namespace oscairn::voices
         // The voice to give up at a block's start, past a limit the host lowered (from context `only`
         // alone unless none): the first voice the last list() named that still sounds in its slot (the
         // same age, not fading out) and that rule 1 does not keep now; a context's in its listed order,
-        // across contexts the first of each by victim()'s order (priority, then the key). When none is
+        // across contexts the first of each by victim()'s order (tier, then priority, then the key). When none is
         // left, victim()'s. -1 when no voice may go.
         template<class Get>
         int next(size_t voices, Get&& get, const Limits& limits, uint32_t only = none)
@@ -245,7 +245,7 @@ namespace oscairn::voices
                     const Candidate* c = r.index < voices ? get(r.index) : nullptr;
                     if(!c || c->ending || c->age != r.c.age || c->context != r.c.context || kept(*c, limits, held, none)) continue; // ended, replaced or kept since
                     const uint8_t priority = limits.of(c->context, c->selected).priority;
-                    if(!best || priority < bestPriority || (priority == bestPriority && r.before(*best))) { best = &r; bestPriority = priority; }
+                    if(!best || (r.tier != best->tier ? r.tier < best->tier : priority != bestPriority ? priority < bestPriority : r.before(*best))) { best = &r; bestPriority = priority; }
                     break; // a context's first still sounding
                 }
             }

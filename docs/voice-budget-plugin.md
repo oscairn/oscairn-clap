@@ -65,7 +65,7 @@ capacity).
 `next(count, get, limits, only = none)`: the voice to give up at a block's start, past a lowered
 limit: the first voice the last `list` named that still sounds in its slot (the same `age`, so make
 `age` a note-on serial that tells a slot's voices apart, and the same context, not ending, not kept
-by rule 1 now), a context's in listed order, across contexts the first of each by `victim`'s order;
+by rule 1 now), a context's in listed order, across contexts the first of each by `victim`'s order (tier, then priority, then the key);
 when none is left, `victim`'s. So a context the host lowers by n gives up exactly the n it listed
 first, though the order has moved since; a listed voice that ended or whose slot a new note took
 is skipped.
