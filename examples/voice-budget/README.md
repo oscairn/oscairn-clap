@@ -1,4 +1,4 @@
-# voice-budget — `oscairn.voice-budget` draft 1
+# voice-budget — `oscairn.voice-budget` draft 2 (and draft 1)
 
 A four-voice sine that lets the host share one processing budget across plugins: `notes()`
 reports what it plays and how loud, `active_voices()` how many voices sound and an estimate
@@ -15,4 +15,7 @@ quietest and oldest voices when the host tightens the budget.
 **Self-test:** `ctest --test-dir build -R oscairn-example-voice-budget` — six notes on four
 voices reported with their loudness; under a limit of 2 the voices given up still fade 64
 frames on and are gone a block later; released voices stop counting; an idle instance
-sleeps; a volume expression of 0 silences its note.
+sleeps; a volume expression of 0 silences its note; the same table answers both IDs; four held keys list
+quietest first and, lowered by two, it gives up the two it listed first. It also checks the SDK
+helper alone: next() takes victim()'s order across parts, gives up what it listed though the order
+moved a block on, and skips a listed voice that ended or whose slot a new note took.
