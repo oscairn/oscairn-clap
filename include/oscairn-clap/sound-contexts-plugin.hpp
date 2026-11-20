@@ -100,6 +100,8 @@ namespace oscairn::contexts
         double   modWheel = 0.0; // the channel's mod wheel (CC 1), 0..1, smoothed
         uint32_t chokeLeft = 0, chokeLength = 0; // a choked voice fades out over chokeLength frames
         uint64_t started = 0;
+        bool     pedaled = false;  // its key up, a pedal holding it
+        int64_t  startedAt = -1;   // the steady time of its note-on, -1 unknown
     };
 
     template<class Derived, class Voice, class Patch, uint32_t ContextCapacity = 8, size_t VoiceCount = 128>
@@ -136,12 +138,15 @@ namespace oscairn::contexts
         uint32_t nextContext = 1; // main thread, never reuse IDs
         uint32_t chokeFrames = 144; // 3 ms at 48 kHz; setSampleRate keeps it 3 ms
         oscairn::voices::Limits voiceLimits; // audio thread: oscairn.voice-budget's, as set_limits gave them
+        double voiceRate = 48000; // for the voices' ages
+        int64_t steadyTime = -1; // audio thread: this process()'s first frame, -1 unknown
         double controlGlide = 1.0 - std::exp(-1.0 / 240.0); // per sample: a 5 ms time constant at 48 kHz
 
         // From activate: a choke fades a voice out over 3 ms instead of cutting it (RFC 0018).
         void setSampleRate(double rate)
         {
             chokeFrames = rate > 0 ? std::max<uint32_t>(1, uint32_t(rate * .003 + .5)) : 144;
+            if(rate > 0) voiceRate = rate;
             controlGlide = rate > 0 ? 1.0 - std::exp(-1.0 / (rate * .005)) : 1.0 - std::exp(-1.0 / 240.0);
         }
         // Once per sample per voice: moves its bend and mod wheel toward its channel's, so a
@@ -216,6 +221,7 @@ namespace oscairn::contexts
             *voice = Voice{};
             voice->active = voice->held = true; voice->key = note.key; voice->channel = note.channel; voice->noteId = note.note_id;
             voice->context = slot; voice->velocity = note.velocity; voice->started = ++notesStarted;
+            voice->startedAt = steadyTime < 0 ? -1 : steadyTime + eventTime;
             voice->bend = channelBend[note.channel]; voice->modWheel = channelModWheel[note.channel]; // no glide at the start
             c.users.fetch_add(1, std::memory_order_relaxed); c.voices.fetch_add(1, std::memory_order_relaxed);
             derived().start(*voice, c);
@@ -228,13 +234,18 @@ namespace oscairn::contexts
         int voiceVictim(uint32_t incoming, uint32_t only = oscairn::voices::none)
         {
             std::array<oscairn::voices::Candidate, VoiceCount> candidates{};
-            for(size_t i = 0; i < VoiceCount; ++i) if(const auto& v = voices[i]; v.active)
-            {
-                const auto& c = contexts[v.context];
-                candidates[i] = {c.id, c.selected.load(std::memory_order_relaxed) != 0, v.held, v.chokeLength != 0, derived().mono(c), derived().loudness(v), v.started};
-            }
+            for(size_t i = 0; i < VoiceCount; ++i) if(voices[i].active) candidates[i] = candidate(voices[i]);
             return oscairn::voices::victim(VoiceCount, [&](size_t i) { return voices[i].active ? &candidates[i] : nullptr; }, voiceLimits, incoming, only);
         }
+        // A voice as the order sees it, now.
+        oscairn::voices::Candidate candidate(const Voice& v)
+        {
+            const auto& c = contexts[v.context];
+            const double ageMs = steadyTime < 0 || v.startedAt < 0 ? -1.0 : double(steadyTime + eventTime - v.startedAt) * 1000.0 / voiceRate;
+            return {c.id, c.selected.load(std::memory_order_relaxed) != 0, v.held, v.chokeLength != 0, derived().mono(c), derived().loudness(v), v.started, v.pedaled, ageMs};
+        }
+        // Enters the release stage: no longer held by a pedal.
+        void releaseVoice(Voice& v) { v.pedaled = false; derived().release(v); }
         void fadeOut(int i)
         {
             if(i < 0) return;
@@ -284,11 +295,12 @@ namespace oscairn::contexts
                 if(fifo) { if(!oldest || v.started < oldest->started) oldest = &v; continue; }
                 v.held = false;
                 if(choke) { if(!v.chokeLength) v.chokeLength = v.chokeLeft = chokeFrames; } // fades, then ends
-                else if(note.key < 0 || !sustainDown[v.channel]) derived().release(v);
+                else if(note.key < 0 || !sustainDown[v.channel]) releaseVoice(v);
+                else v.pedaled = true;
             }
-            if(oldest) { oldest->held = false; if(!sustainDown[oldest->channel]) derived().release(*oldest); }
+            if(oldest) { oldest->held = false; if(!sustainDown[oldest->channel]) releaseVoice(*oldest); else oldest->pedaled = true; }
             // An emergency wildcard release must also release already pedal-held voices.
-            if(note.key < 0) for(auto& v : voices) if(matches(v, note.note_id, note.key, note.channel)) derived().release(v);
+            if(note.key < 0) for(auto& v : voices) if(matches(v, note.note_id, note.key, note.channel)) releaseVoice(v);
         }
         void applyExpression(const clap_event_note_expression_t& e)
         {
@@ -337,7 +349,7 @@ namespace oscairn::contexts
             else if(e.data[1] == 64)
             {
                 sustainDown[channel] = e.data[2] >= 64;
-                if(!sustainDown[channel]) for(auto& v : voices) if(v.active && v.channel == channel && !v.held) derived().release(v);
+                if(!sustainDown[channel]) for(auto& v : voices) if(v.active && v.channel == channel && !v.held) releaseVoice(v);
             }
             else if(e.data[1] == 120 || e.data[1] == 123)
             {
@@ -378,7 +390,7 @@ namespace oscairn::contexts
             auto& s = self(p);
             if(process->audio_outputs_count < 1 || process->audio_outputs[0].channel_count < 2)
                 return CLAP_PROCESS_ERROR;
-            s.output = process->out_events; s.eventTime = 0;
+            s.output = process->out_events; s.eventTime = 0; s.steadyTime = process->steady_time;
             struct ClearOutput { Engine& s; ~ClearOutput() { s.output = nullptr; s.ringOut = nullptr; } } clearOutput{s}; // ring_out gives one process() its buffer
             s.applySelections(process->out_events);
             s.keepWithinLimits();
