@@ -39,7 +39,9 @@ Wrapped (`oscairn-clap`):
   `ids::OSCAIRN_EXT_UI` (one draft-6 table answers the draft-5, draft-4 and draft-3 IDs too, whose
   members are a prefix). `Widget`, `Role` and `Field` carry the headers' values.
 - `oscairn.voice-budget` — implement `voice_budget::VoiceBudget` and `voice_budget_table!`;
-  `Limits` copies the host's `set_limits` entry and answers `of(context, selected)` with the
+  return the table for `ids::OSCAIRN_EXT_VOICE_BUDGET_DRAFT_2` and `ids::OSCAIRN_EXT_VOICE_BUDGET`
+  (draft 1). Its `importance` member is null unless you set `HAS_IMPORTANCE` and implement
+  `importance`, which a host reads as no report. `Limits` copies the host's `set_limits` entry and answers `of(context, selected)` with the
   `OSCAIRN_VOICE_BUDGET_SELECTED` fallback the header prescribes.
 - Extension and event-space ID constants: `oscairn_clap::ids`, a `&CStr` for each ID string
   in the headers, generated from the bindings.

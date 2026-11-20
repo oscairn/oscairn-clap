@@ -385,10 +385,13 @@ pub mod voice_budget {
         fn active_voices(&self, voice_cost: &mut f64) -> u32;
         /// Report each note still sounding through `emit`; stop when it returns false.
         fn notes(&self, emit: &mut dyn FnMut(&Note) -> bool);
+        /// Set to `true` when `importance` is implemented: `voice_budget_table!` then fills that
+        /// member, else it is null, which a host reads as no report (a draft-1 plugin's behavior).
+        const HAS_IMPORTANCE: bool = false;
         /// Draft 2: each sounding context's least important voices (voice-budget.h's importance), through
         /// `emit`; stop when it returns false: the host has no room for more, and the contexts not
-        /// emitted are not reported (record it if you count them). The default reports none, as a
-        /// draft-1 plugin.
+        /// emitted are not reported (record it if you count them). Called only when
+        /// [`VoiceBudget::HAS_IMPORTANCE`] is true.
         fn importance(&self, emit: &mut dyn FnMut(&oscairn_voice_budget_importance_t) -> bool) {
             let _ = emit;
         }
@@ -493,7 +496,9 @@ pub mod voice_budget {
 
     /// The `oscairn_plugin_voice_budget_t` table for `P`; put it in a `static` and return a
     /// reference to it from `get_extension` when asked for `ids::OSCAIRN_EXT_VOICE_BUDGET_DRAFT_2`
-    /// or `ids::OSCAIRN_EXT_VOICE_BUDGET` (draft 1's ID, for an older host). No null entries: the host refuses a table with one.
+    /// or `ids::OSCAIRN_EXT_VOICE_BUDGET` (draft 1's ID, for an older host). `importance` is null
+    /// unless `P` sets [`VoiceBudget::HAS_IMPORTANCE`]; the four members before it are never null
+    /// (the host refuses a table with one of those null).
     ///
     /// Safety contract: as in [`crate::ui_table`].
     #[macro_export]
@@ -504,7 +509,11 @@ pub mod voice_budget {
                 set_limits: Some($crate::voice_budget::trampoline_set_limits::<$P>),
                 active_voices: Some($crate::voice_budget::trampoline_active_voices::<$P>),
                 notes: Some($crate::voice_budget::trampoline_notes::<$P>),
-                importance: Some($crate::voice_budget::trampoline_importance::<$P>),
+                importance: if <$P as $crate::voice_budget::VoiceBudget>::HAS_IMPORTANCE {
+                    Some($crate::voice_budget::trampoline_importance::<$P>)
+                } else {
+                    None
+                },
             }
         };
     }
