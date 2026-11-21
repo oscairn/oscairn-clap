@@ -38,7 +38,7 @@ from a table that answered draft 2's ID. Return the same table for both IDs.
 | --- | --- | --- |
 | `bool honors_volume(plugin)` | main, once after `init` (in a worker, once at load) | True when every voice follows `CLAP_NOTE_EXPRESSION_VOLUME`, so the host's own 5 ms fade before a choke works. Under pressure the host fades a held note of a plugin that says so before one that does not |
 | `void set_limits(plugin, limit, contexts, count)` | audio, **between blocks, never during `process`**, only when something changed | Keep at most `limit` voices from the next `process` on (0: as many as the pool holds), and per sound context the settings below. Copy what you need (at most `OSCAIRN_VOICE_BUDGET_MAX_CONTEXTS`, 16, entries). At the next block's start, fade out voices past a lowered limit, in the order below; a new note past it takes a voice the same way |
-| `uint32_t active_voices(plugin, double* voice_cost)` | audio, after every `process` | The voices sounding now, fading ones included (in draft 2 the units `importance` lists: notes, for an engine that gives a note up only whole), and your estimate of one voice's cost in microseconds a block at the current block size (0: none). The host measures the block's time either way and shares it per voice rather than per note |
+| `uint32_t active_voices(plugin, double* voice_cost)` | audio, after every `process` | The voices sounding now, including those fading out after being given up (in draft 2 the units `importance` lists: notes, for an engine that gives a note up only whole), and your estimate of one voice's cost in microseconds a block at the current block size (0: none). The host measures the block's time either way and shares it per voice rather than per note |
 | `uint32_t notes(plugin, oscairn_voice_budget_note_t* notes, capacity)` | audio, after every `process` | Each note still sounding, by the address the host gave it (note ID, port, channel, key), with its voices and its loudness now: the largest of its voices' gains, linear, 1 at full level (envelope, velocity and volume expression; not the patch's output level). Write at most `capacity`, return how many. The host compares notes across plugins by it |
 | `uint32_t importance(plugin, oscairn_voice_budget_importance_t* contexts, capacity)` | audio, after every `process` (draft 2) | Each sounding context's 16 least important voices, least important first, and how many voices it sounds ([the importance report](#the-importance-report-draft-2)). Write at most `capacity` contexts, return how many |
 
@@ -86,11 +86,13 @@ rule 1. [`voice-budget-plugin.hpp`](voice-budget-plugin.md) implements it.
 
 So a host can weigh a pedaled piano note in one part against a lead's held key in another, a plugin
 reports after each block, per sounding context (`oscairn_voice_budget_importance_t`): `context`,
-`voices` (sounding, those fading out not counted), `weight` (the sum of those voices' weights; 0:
+`voices` (the units it keeps: one fading out after being given up is not counted, and is not listed), `weight` (the sum of those voices' weights; 0:
 `voices`) and up to `OSCAIRN_VOICE_BUDGET_LEAST` (16) entries in `least`, least important first, by
 the order above with no voice incoming. Each entry (`oscairn_voice_budget_least_t`): `tier` (0
 released or inaudible, 1 held only by a pedal, 2 key held), `flags` (`OSCAIRN_VOICE_BUDGET_STRUCK`:
-under 50 ms old), `age_ms`, `level_db` and `weight`. Voices rule 1 keeps are not listed.
+under 50 ms old), `age_ms`, `level_db` and `weight`. Voices rule 1 keeps are not listed. A host
+compares a limit with the report's `voices`, not with `active_voices`, which also counts the voices
+fading out.
 
 - **A listed voice is your unit of giving up**: what your limit and `active_voices` count (a
   sampler's note with all its layers, a synth's voice), never a part of one you cannot give up
@@ -120,7 +122,8 @@ the drop ages, envelope levels, the 50 ms mark and the -60 dBFS floor move, so i
 voice (B released at -30 dB 2 s old and A released at -40 dB struck 48 ms ago list as [B, A]; a
 block later A is no longer struck, and the order alone takes A). Remember what you listed:
 `voice-budget-plugin.hpp`'s `Importance::next()` gives up the listed voices first, in listed order,
-each while it still sounds in its slot, then works the order out. The host checks, two reports on,
+each while it still sounds in its slot, then works the order out. Give up the listed voices first
+when you make room for a new note at a limit too, not only when a limit is lowered. The host checks, two reports on,
 that the context sounds no more than its limit; Oscairn counts a miss (`importanceMismatch` in
 `engine.timing`, `importance_mismatch` in its engine core) and goes on.
 
